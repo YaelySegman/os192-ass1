@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "stat.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -146,6 +147,7 @@ main(void)
 {
   static char buf[100];
   int fd;
+  int fdpath;
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -154,6 +156,23 @@ main(void)
       break;
     }
   }
+  if(open("path",O_RDONLY ) < 0 ){
+    if((fdpath = open("path", O_CREATE| O_RDWR ))>=0 ){
+      if(write(fdpath,"/:",2)!=2){
+        panic("could not write to file");
+      }
+
+    }
+    else {
+      panic("could not create file path");
+    }
+
+  }
+  else{
+    printf(2,"file path exists\n", 18);
+  }
+
+
 
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
