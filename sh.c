@@ -64,6 +64,12 @@ runcmd(struct cmd *cmd)
   struct listcmd *lcmd;
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
+  int fd;
+  char c[1];
+  char s[512];
+  int stringLocation = 0;
+  char * myCmd;
+  int cmdName = 0;
 
   if(cmd == 0)
     exit();
@@ -75,10 +81,38 @@ runcmd(struct cmd *cmd)
   case EXEC:
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
-      exit();
+    exit();
     exec(ecmd->argv[0], ecmd->argv);
+    fd = open("/path",O_RDONLY);
+    myCmd = ecmd->argv[0];
+    if (myCmd[0] != '/'){
+      while (read(fd,c,1) != 0){
+        if (c[0]!=':'){
+          s[stringLocation] = c[0];
+          stringLocation++;
+        }
+        else{
+          while(myCmd[cmdName] != 0){
+            s[stringLocation] = myCmd[cmdName];
+            stringLocation++;
+            cmdName++;
+          }
+          s[stringLocation] = 0;
+
+          stringLocation = 0;
+          cmdName = 0;
+          exec(s, ecmd->argv);
+        }
+      }
+      printf(2, "exec %s failed\n", ecmd->argv[0]);
+  }
+  else{
     printf(2, "exec %s failed\n", ecmd->argv[0]);
+  }
+
+  close(fd);
     break;
+
 
   case REDIR:
     rcmd = (struct redircmd*)cmd;
