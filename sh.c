@@ -71,6 +71,7 @@ runcmd(struct cmd *cmd)
   char * myCmd;
   int cmdName = 0;
 
+
   if(cmd == 0)
     exit();
 
@@ -82,7 +83,9 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
     exit();
+    //Try to exec original command
     exec(ecmd->argv[0], ecmd->argv);
+    //Returned from exec -> Couldn't find cmd in current dir -> try to find with path file
     fd = open("/path",O_RDONLY);
     myCmd = ecmd->argv[0];
     if (myCmd[0] != '/'){
@@ -98,18 +101,17 @@ runcmd(struct cmd *cmd)
             cmdName++;
           }
           s[stringLocation] = 0;
-
           stringLocation = 0;
           cmdName = 0;
+          // DEBUG, DELETE LATER:printf(2,"cmd is:%s\n",s);
           exec(s, ecmd->argv);
+          }
         }
-      }
-      printf(2, "exec %s failed\n", ecmd->argv[0]);
+        printf(2, "exec %s failed1\n", ecmd->argv[0]);
   }
   else{
-    printf(2, "exec %s failed\n", ecmd->argv[0]);
+    printf(2, "exec %s failed2\n", ecmd->argv[0]);
   }
-
   close(fd);
     break;
 
@@ -190,9 +192,12 @@ main(void)
       break;
     }
   }
+  //check if path file exists ' create it if not.'
+  int init_path_size=2;
+  char init_path[init_path_size]= "/:";
   if(open("path",O_RDONLY ) < 0 ){
     if((fdpath = open("path", O_CREATE| O_RDWR ))>=0 ){
-      if(write(fdpath,"/:",2)!=2){
+      if(write(fdpath,init_path,init_path_size)!=init_path_size){
         panic("could not write to file");
       }
 
