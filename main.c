@@ -33,7 +33,7 @@ main(void)
   tvinit();        // trap vectors
   binit();         // buffer cache
   fileinit();      // file table
-  ideinit();       // disk 
+  ideinit();       // disk
   startothers();   // start other processors
   kinit2(P2V(4*1024*1024), P2V(PHYSTOP)); // must come after startothers()
   initSchedDS(); // initialize the data structures for the processes sceduling policies
@@ -134,4 +134,3 @@ pde_t entrypgdir[NPDENTRIES] = {
 // Blank page.
 //PAGEBREAK!
 // Blank page.
-

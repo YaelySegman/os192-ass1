@@ -181,6 +181,9 @@ getcmd(char *buf, int nbuf)
 int
 main(void)
 {
+//TODO:delete LATER
+
+
   static char buf[100];
   int fd;
   int fdpath;
@@ -192,6 +195,8 @@ main(void)
       break;
     }
   }
+
+
   //check if path file exists ' create it if not.'
   int init_path_size=2;
   char *  init_path= "/:";

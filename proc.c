@@ -326,6 +326,26 @@ wait(int *status)
   }
 }
 
+// Detach : detach the process with pid from current paret to init
+int detach(int pid){
+	struct proc *p;
+	struct proc *curproc = myproc();
+	acquire(&ptable.lock);
+	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+		if (pid!= p->pid && curproc!= p->parent)
+			continue;
+
+		p->parent = 0;
+		release(&ptable.lock);
+//TODO: DELETE LATER-DEBUG
+		cprintf("Detached proc with pid:%d\n",p->pid);
+		return 0;
+
+	}
+	release(&ptable.lock);
+	cprintf("Detach failed, no proccess with pid %d\n", pid);
+	return -1;
+}
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
