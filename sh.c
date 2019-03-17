@@ -73,7 +73,7 @@ runcmd(struct cmd *cmd)
 
 
   if(cmd == 0)
-    exit();
+    exit(0);
 
   switch(cmd->type){
   default:
@@ -82,7 +82,7 @@ runcmd(struct cmd *cmd)
   case EXEC:
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
-    exit();
+    exit(0);
     //Try to exec original command
     exec(ecmd->argv[0], ecmd->argv);
     //Returned from exec -> Couldn't find cmd in current dir -> try to find with path file
@@ -121,7 +121,7 @@ runcmd(struct cmd *cmd)
     close(rcmd->fd);
     if(open(rcmd->file, rcmd->mode) < 0){
       printf(2, "open %s failed\n", rcmd->file);
-      exit();
+      exit(0);
     }
     runcmd(rcmd->cmd);
     break;
@@ -130,7 +130,7 @@ runcmd(struct cmd *cmd)
     lcmd = (struct listcmd*)cmd;
     if(fork1() == 0)
       runcmd(lcmd->left);
-    wait();
+    wait(0);
     runcmd(lcmd->right);
     break;
 
@@ -154,8 +154,8 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
-    wait();
-    wait();
+    wait(0);
+    wait(0);
     break;
 
   case BACK:
@@ -164,7 +164,7 @@ runcmd(struct cmd *cmd)
       runcmd(bcmd->cmd);
     break;
   }
-  exit();
+  exit(0);
 }
 
 int
@@ -194,7 +194,7 @@ main(void)
   }
   //check if path file exists ' create it if not.'
   int init_path_size=2;
-  char init_path[init_path_size]= "/:";
+  char *  init_path= "/:";
   if(open("path",O_RDONLY ) < 0 ){
     if((fdpath = open("path", O_CREATE| O_RDWR ))>=0 ){
       if(write(fdpath,init_path,init_path_size)!=init_path_size){
@@ -224,16 +224,16 @@ main(void)
     }
     if(fork1() == 0)
       runcmd(parsecmd(buf));
-    wait();
+    wait(0);
   }
-  exit();
+  exit(0);
 }
 
 void
 panic(char *s)
 {
   printf(2, "%s\n", s);
-  exit();
+  exit(0);
 }
 
 int
