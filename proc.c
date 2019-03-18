@@ -332,7 +332,7 @@ int detach(int pid){
 	struct proc *curproc = myproc();
 	acquire(&ptable.lock);
 	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-		if (pid!= p->pid && curproc!= p->parent)
+		if (pid!= p->pid || curproc!= p->parent)
 			continue;
 
 		p->parent = 0;
