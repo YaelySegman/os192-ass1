@@ -280,9 +280,9 @@ exit(int status)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(int *status)
+wait(int * status)
 {
-  struct proc *p;
+	struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
 
@@ -308,6 +308,8 @@ wait(int *status)
 				// discard the status if it's null
 				if(p->exit_status != null){
 					*status = p->exit_status;
+
+
 				}
         release(&ptable.lock);
         return pid;
@@ -337,13 +339,11 @@ int detach(int pid){
 
 		p->parent = 0;
 		release(&ptable.lock);
-//TODO: DELETE LATER-DEBUG
-		cprintf("Detached proc with pid:%d\n",p->pid);
 		return 0;
 
 	}
 	release(&ptable.lock);
-	cprintf("Detach failed, no proccess with pid %d\n", pid);
+	cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
 //PAGEBREAK: 42

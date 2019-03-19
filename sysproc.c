@@ -25,10 +25,12 @@ sys_exit(void)
 }
 
 int
-sys_wait(int * status)
+sys_wait(void)
 {
-  if(argint(0,status)<0)
+  int * status;
+  if(argint(0,(int *)(&status))<0)
     return -1;
+
   return wait(status);
 }
 

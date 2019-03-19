@@ -25,6 +25,17 @@ fetchint(uint addr, int *ip)
   return 0;
 }
 
+// Fetch the int ptr at addr from the current process.
+// int
+// fetchintptr(uint addr, int **ip)
+// {
+//   struct proc *curproc = myproc();
+//
+//   if(addr >= curproc->sz || addr+4 > curproc->sz)
+//     return -1;
+//   *ip = addr;
+//   return 0;
+// }
 // Fetch the nul-terminated string at addr from the current process.
 // Doesn't actually copy the string - just sets *pp to point at it.
 // Returns length of string, not including nul.
@@ -51,6 +62,7 @@ argint(int n, int *ip)
 {
   return fetchint((myproc()->tf->esp) + 4 + 4*n, ip);
 }
+
 
 // Fetch the nth word-sized system call argument as a pointer
 // to a block of memory of size bytes.  Check that the pointer
