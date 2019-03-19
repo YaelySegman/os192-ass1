@@ -51,7 +51,16 @@ sys_detach(void)
   if(argint(0, &pid) < 0)
     return -1;
   return detach(pid);
+}
 
+sys_policy(void)
+{
+  int poli;
+  argint(0, &poli);
+  if(poli != 1 && poli != 2 && poli != 3)
+    return -1;
+  policy(poli);
+  return 0;
 }
 
 int

@@ -13,9 +13,12 @@ extern RoundRobinQueue rrq;
 extern RunningProcessesHolder rpholder;
 
 long long getAccumulator(struct proc *p) {
+	return p->accumulator;
 	//Implement this function, remove the panic line.
-	panic("getAccumulator: not implemented\n");
+	//panic("getAccumulator: not implemented\n");
 }
+enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
+enum policy pol = ROUND_ROBIN;
 
 struct {
   struct spinlock lock;
@@ -346,6 +349,62 @@ int detach(int pid){
 	cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
+void policy(int policy) {
+	enum oldPolicy = pol;
+  pol = policy;
+	switch (pol) {
+		case ROUND_ROBIN{
+			switch (oldPolicy)
+			case ROUND_ROBIN{
+				//TODO
+			}
+			case PRIORITY{
+				//TODO
+			}
+			case E_PRIORITY{
+				//TODO
+			}
+		}
+		case PRIORITY{
+			switch (oldPolicy)
+			case ROUND_ROBIN{
+				//TODO
+			}
+			case PRIORITY{
+				//TODO
+			}
+			case E_PRIORITY{
+				//TODO
+			}
+		}
+		case E_PRIORITY{
+			switch (oldPolicy)
+			case ROUND_ROBIN{
+				//TODO
+			}
+			case PRIORITY{
+				//TODO
+			}
+			case E_PRIORITY{
+				//TODO
+			}
+		}
+	}
+}
+
+struct proc* getProc() {
+	switch (pol)
+	case ROUND_ROBIN{
+		//TODO
+	}
+	case PRIORITY{
+		//TODO
+	}
+	case E_PRIORITY{
+		//TODO
+	}
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -354,9 +413,9 @@ int detach(int pid){
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+//ORIGINAL SKEDULAR
 void
-scheduler(void)
-{
+original_scheduler(void){
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
@@ -389,7 +448,47 @@ scheduler(void)
 
   }
 }
+//PAGEBREAK: 42
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run
+//  - swtch to start running that process
+//  - eventually that process transfers control
+//      via swtch back to the scheduler.
+void
+scheduler(void){
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
 
+  for(;;){
+    // Enable interrupts on this processor.
+    sti();
+
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
+		p = getProc();
+    if(p != 0 && p->state == RUNNABLE) {
+
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&ptable.lock);
+
+  }
+}
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
