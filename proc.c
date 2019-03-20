@@ -228,6 +228,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+	sign_to_q(np);
 
   release(&ptable.lock);
 
@@ -349,60 +350,82 @@ int detach(int pid){
 	cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
+void sign_to_q(proc * p)
+{
+	switch (pol){
+	case ROUND_ROBIN:
+		rrq.enqueue(p);
+	break;
+	case PRIORITY:
+
+	break;
+	case E_PRIORITY:
+
+		break;
+	default:
+
+	}
+
+}
 void policy(int policy) {
-	enum oldPolicy = pol;
+	int oldPolicy = pol;
   pol = policy;
 	switch (pol) {
-		case ROUND_ROBIN{
-			switch (oldPolicy)
-			case ROUND_ROBIN{
+		case ROUND_ROBIN:
+			switch (oldPolicy){
+			case ROUND_ROBIN:
 				//TODO
-			}
-			case PRIORITY{
+			break;
+			case PRIORITY:
 				//TODO
-			}
-			case E_PRIORITY{
+			break;
+			case E_PRIORITY:
 				//TODO
-			}
-		}
-		case PRIORITY{
-			switch (oldPolicy)
-			case ROUND_ROBIN{
+			break;
+		}break;
+		case PRIORITY:
+		switch (oldPolicy){
+		case ROUND_ROBIN:
+			//TODO
+		break;
+		case PRIORITY:
+			//TODO
+		break;
+		case E_PRIORITY:
+			//TODO
+		break;
+	}break;
+		case E_PRIORITY:
+			switch (oldPolicy){
+			case ROUND_ROBIN:
 				//TODO
-			}
-			case PRIORITY{
+			break;
+			case PRIORITY:
 				//TODO
-			}
-			case E_PRIORITY{
+			break;
+			case E_PRIORITY:
 				//TODO
-			}
-		}
-		case E_PRIORITY{
-			switch (oldPolicy)
-			case ROUND_ROBIN{
-				//TODO
-			}
-			case PRIORITY{
-				//TODO
-			}
-			case E_PRIORITY{
-				//TODO
-			}
-		}
+			break;
+		}break;
+
 	}
 }
 
 struct proc* getProc() {
-	switch (pol)
-	case ROUND_ROBIN{
-		//TODO
+	switch (pol){
+	case ROUND_ROBIN:
+		return rrq.dequeue();
+	break;
+	case PRIORITY:
+		return pq.extractMin();
+	break;
+	case E_PRIORITY:
+		return pq.extractMin();
+		break;
+	default:
+		return rrq.dequeue();
 	}
-	case PRIORITY{
-		//TODO
-	}
-	case E_PRIORITY{
-		//TODO
-	}
+
 }
 
 //PAGEBREAK: 42
@@ -415,7 +438,7 @@ struct proc* getProc() {
 //      via swtch back to the scheduler.
 //ORIGINAL SKEDULAR
 void
-original_scheduler(void){
+scheduler(void){
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
@@ -433,7 +456,8 @@ original_scheduler(void){
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      c->proc = p;
+			rrq.enqueue(p);
+      c->proc = getProc();
       switchuvm(p);
       p->state = RUNNING;
 
@@ -457,7 +481,7 @@ original_scheduler(void){
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
 void
-scheduler(void){
+b_scheduler(void){
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
@@ -520,7 +544,9 @@ void
 yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
-  myproc()->state = RUNNABLE;
+	proc * p = myproc();
+  p->state = RUNNABLE;
+	sign_to_q(p)
   sched();
   release(&ptable.lock);
 }
@@ -594,8 +620,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+			sign_to_q(p);
+		}
 }
 
 // Wake up all processes sleeping on chan.
@@ -620,8 +648,11 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING){
         p->state = RUNNABLE;
+				sign_to_q(p);
+
+			}
       release(&ptable.lock);
       return 0;
     }

@@ -53,6 +53,7 @@ sys_detach(void)
   return detach(pid);
 }
 
+int
 sys_policy(void)
 {
   int poli;
