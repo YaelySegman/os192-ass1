@@ -85,6 +85,7 @@ runcmd(struct cmd *cmd)
     exit(0);
     //Try to exec original command
     exec(ecmd->argv[0], ecmd->argv);
+    printf(2,"returned from exec\n" );
     //Returned from exec -> Couldn't find cmd in current dir -> try to find with path file
     fd = open("/path",O_RDONLY);
     myCmd = ecmd->argv[0];
@@ -105,6 +106,7 @@ runcmd(struct cmd *cmd)
           cmdName = 0;
           // DEBUG, DELETE LATER:printf(2,"cmd is:%s\n",s);
           exec(s, ecmd->argv);
+
           }
         }
         printf(2, "exec %s failed\n", ecmd->argv[0]);

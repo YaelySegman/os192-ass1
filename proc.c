@@ -32,7 +32,7 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
-//static void sign_to_q(struct proc *p);
+static void sign_to_q(struct proc *p);
 
 void
 pinit(void)
@@ -230,7 +230,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	//sign_to_q(np);
+	sign_to_q(np);
 
   release(&ptable.lock);
 
@@ -442,7 +442,7 @@ struct proc* getProc() {
 //      via swtch back to the scheduler.
 //ORIGINAL SKEDULAR
 void
-scheduler(void){
+a_scheduler(void){
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
@@ -462,6 +462,7 @@ scheduler(void){
       // before jumping back to us.
 			rrq.enqueue(p);
       c->proc = getProc();
+
       switchuvm(p);
       p->state = RUNNING;
 			rpholder.add(p);
@@ -485,12 +486,15 @@ scheduler(void){
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
 void
-b_scheduler(void){
-  struct proc *p;
+scheduler(void){
+  struct proc *p=0;
   struct cpu *c = mycpu();
   c->proc = 0;
 
   for(;;){
+		if(p!=0){
+			cprintf("pid of process :%d\n",p->pid);
+		}
     // Enable interrupts on this processor.
     sti();
 
@@ -502,7 +506,9 @@ b_scheduler(void){
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
+
       c->proc = p;
+
       switchuvm(p);
       p->state = RUNNING;
 			rpholder.add(p);
@@ -550,7 +556,7 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
 	struct proc * p = myproc();
   p->state = RUNNABLE;
-	//sign_to_q(p);
+	sign_to_q(p);
   sched();
   release(&ptable.lock);
 }
@@ -626,7 +632,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-			//sign_to_q(p);
+			sign_to_q(p);
 		}
 }
 
@@ -654,7 +660,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				//sign_to_q(p);
+				sign_to_q(p);
 
 			}
       release(&ptable.lock);
