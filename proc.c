@@ -32,6 +32,7 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+//static void sign_to_q(struct proc *p);
 
 void
 pinit(void)
@@ -228,7 +229,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	sign_to_q(np);
+	//sign_to_q(np);
 
   release(&ptable.lock);
 
@@ -277,6 +278,7 @@ exit(int status)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+	//rpholder.delete(p);
   sched();
   panic("zombie exit");
 }
@@ -350,7 +352,7 @@ int detach(int pid){
 	cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
-void sign_to_q(proc * p)
+void sign_to_q(struct proc *p)
 {
 	switch (pol){
 	case ROUND_ROBIN:
@@ -363,10 +365,11 @@ void sign_to_q(proc * p)
 
 		break;
 	default:
-
+		rrq.enqueue(p);
 	}
 
 }
+
 void policy(int policy) {
 	int oldPolicy = pol;
   pol = policy;
@@ -460,7 +463,7 @@ scheduler(void){
       c->proc = getProc();
       switchuvm(p);
       p->state = RUNNING;
-
+			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
@@ -501,7 +504,7 @@ b_scheduler(void){
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
+			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
@@ -544,9 +547,9 @@ void
 yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
-	proc * p = myproc();
+	struct proc * p = myproc();
   p->state = RUNNABLE;
-	sign_to_q(p)
+	//sign_to_q(p);
   sched();
   release(&ptable.lock);
 }
@@ -598,7 +601,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+	//rpholder.delete(p);
   sched();
 
   // Tidy up.
@@ -622,7 +625,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-			sign_to_q(p);
+			//sign_to_q(p);
 		}
 }
 
@@ -650,7 +653,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				sign_to_q(p);
+				//sign_to_q(p);
 
 			}
       release(&ptable.lock);
