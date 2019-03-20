@@ -163,6 +163,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+	sign_to_q(p);
 
   release(&ptable.lock);
 }
