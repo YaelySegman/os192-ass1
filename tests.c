@@ -159,8 +159,8 @@ void some(){
 }
 int main(void){
   //round_robin_sanity();
-//  some();
-  test_3sons(2);
+  //some();
+  test_3sons(3);
   //make_test(test_exit_wait_success, 1, "test_exit_wait_success failed\n");
   //make_test(test_exit_wait_fail, -1 , "test_exit_wait_fail failed\n");
   //make_test(test_detach_success,0,"test_detach_success failed\n");

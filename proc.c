@@ -22,13 +22,16 @@ enum policy pol = ROUND_ROBIN;
 int min_priority = 1;
 int max_priority = 10;
 int time_quantum_counter = 0;
-#define DEFAULT_PRIORITY 5;
+#define DEFAULT_PRIORITY 5
+#define NEW_PROCESS 1
+#define OLD_PROCESS 0
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
 
 static struct proc *initproc;
+static struct proc *lastProc = 0;
 
 int nextpid = 1;
 extern void forkret(void);
@@ -167,7 +170,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	sign_to_q(p,1);
+	sign_to_q(p,NEW_PROCESS);
 
   release(&ptable.lock);
 }
@@ -238,7 +241,7 @@ fork(void)
 		panic("Running Handler struct is empty!!!");
 	}
 	np->priority = DEFAULT_PRIORITY;
-	sign_to_q(np,1);
+	sign_to_q(np,NEW_PROCESS);
 
   release(&ptable.lock);
 
@@ -367,8 +370,8 @@ void priority(int priority){
  }
  	else panic("Priorety is not in allowed range");
 }
-void sign_to_q(struct proc *p, int isNew)
-{
+
+void sign_to_q(struct proc *p, int isNew){
 	if(!isNew){
 		p->accumulator += p->priority;
 	}
@@ -385,19 +388,18 @@ void sign_to_q(struct proc *p, int isNew)
 	default:
 		rrq.enqueue(p);
 	}
-
 }
 
 void policy(int policy) {
 	cprintf("old:%d new: %d", pol,policy);
 	int oldPolicy = pol;
   pol = policy;
-	switch (pol) {
+	switch (oldPolicy) {
 		case ROUND_ROBIN:
-			switch (oldPolicy){
+			switch (pol){
 			case ROUND_ROBIN:
 				cprintf("ROUND_ROBIN");
-				break;
+			break;
 			case PRIORITY:
 				cprintf("THIS IS PRIORITY");
 				if(!rrq.switchToPriorityQueuePolicy())
@@ -405,38 +407,47 @@ void policy(int policy) {
 			break;
 			case E_PRIORITY:
 				cprintf("E_PRIORITY");
-				//TODO
+				if(!rrq.switchToPriorityQueuePolicy())
+					panic("Couldn't switch from Round Robin to Priority");
+				min_priority = 0;
 			break;
 		}break;
 		case PRIORITY:
-		switch (oldPolicy){
-		case ROUND_ROBIN:
-			//TODO
-		break;
-		case PRIORITY:
-			//TODO
-		break;
-		case E_PRIORITY:
-			//TODO
-		break;
-	}break;
-		case E_PRIORITY:
-			switch (oldPolicy){
+			switch (pol){
 			case ROUND_ROBIN:
-				//TODO
+				cprintf("ROUND_ROBIN");
+				pq.switchToRoundRobinPolicy();
 			break;
 			case PRIORITY:
-				//TODO
+			cprintf("THIS IS PRIORITY");
 			break;
 			case E_PRIORITY:
-				//TODO
+				cprintf("E_PRIORITY");
+				min_priority = 0;
 			break;
-		}break;
-
+			}
+		break;
+		case E_PRIORITY:
+			switch (pol){
+				case ROUND_ROBIN:
+					cprintf("ROUND_ROBIN");
+					pq.switchToRoundRobinPolicy();
+					min_priority = 1;
+				break;
+				case PRIORITY:
+					cprintf("THIS IS PRIORITY");
+					min_priority = 1;
+				break;
+				case E_PRIORITY:
+					cprintf("E_PRIORITY");
+				break;
+			}
+		break;
 	}
 }
 
 struct proc* getProc() {
+	struct proc *p = 0;
 	switch (pol){
 	case ROUND_ROBIN:
 		return rrq.dequeue();
@@ -445,14 +456,26 @@ struct proc* getProc() {
 		return pq.extractMin();
 	break;
 	case E_PRIORITY:
-		strucr proc * p = pq.extractMin();
-		//
-		return p;
-		break;
+		p = pq.extractMin();
+		if(lastProc == p){
+			if(time_quantum_counter % 100 == 0){
+				struct proc * otherProc = pq.extractMin();
+				pq.put(p);
+				return otherProc;
+			}
+			else{
+				time_quantum_counter++;
+				return p;
+			}
+		}
+		else{
+			time_quantum_counter = 0;
+			return p;
+		}
+	break;
 	default:
 		return rrq.dequeue();
 	}
-
 }
 
 //PAGEBREAK: 42
@@ -522,6 +545,7 @@ scheduler(void){
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
 		p = getProc();
+		lastProc = p;
     if(p != 0 && p->state == RUNNABLE) {
 
       // Switch to chosen process.  It is the process's job
@@ -577,7 +601,7 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
 	struct proc * p = myproc();
   p->state = RUNNABLE;
-	sign_to_q(p,0);
+	sign_to_q(p,OLD_PROCESS);
   sched();
   release(&ptable.lock);
 }
@@ -653,7 +677,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-			sign_to_q(p,0);
+			sign_to_q(p,OLD_PROCESS);
 		}
 }
 
@@ -681,7 +705,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				sign_to_q(p,0);
+				sign_to_q(p,OLD_PROCESS);
 
 			}
       release(&ptable.lock);
