@@ -19,7 +19,10 @@ long long getAccumulator(struct proc *p) {
 }
 enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
 enum policy pol = ROUND_ROBIN;
-
+int min_priority = 1;
+int max_priority = 10;
+int time_quantum_counter = 0;
+#define DEFAULT_PRIORITY 5;
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -32,7 +35,8 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
-static void sign_to_q(struct proc *p);
+static void sign_to_q(struct proc *p, int isNew);
+
 
 void
 pinit(void)
@@ -163,7 +167,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	sign_to_q(p);
+	sign_to_q(p,1);
 
   release(&ptable.lock);
 }
@@ -230,7 +234,11 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	sign_to_q(np);
+	if(!rpholder.getMinAccumulator(&(np->accumulator))){
+		panic("Running Handler struct is empty!!!");
+	}
+	np->priority = DEFAULT_PRIORITY;
+	sign_to_q(np,1);
 
   release(&ptable.lock);
 
@@ -279,7 +287,7 @@ exit(int status)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-	//rpholder.delete(p);
+	rpholder.remove(p);
   sched();
   panic("zombie exit");
 }
@@ -353,17 +361,26 @@ int detach(int pid){
 	cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
-void sign_to_q(struct proc *p)
+void priority(int priority){
+	if(priority > min_priority && priority > max_priority){
+	 myproc()->priority = priority;
+ }
+ 	else panic("Priorety is not in allowed range");
+}
+void sign_to_q(struct proc *p, int isNew)
 {
+	if(!isNew){
+		p->accumulator += p->priority;
+	}
 	switch (pol){
 	case ROUND_ROBIN:
 		rrq.enqueue(p);
 	break;
 	case PRIORITY:
-
+		pq.put(p);
 	break;
 	case E_PRIORITY:
-
+		pq.put(p);
 		break;
 	default:
 		rrq.enqueue(p);
@@ -372,18 +389,22 @@ void sign_to_q(struct proc *p)
 }
 
 void policy(int policy) {
+	cprintf("old:%d new: %d", pol,policy);
 	int oldPolicy = pol;
   pol = policy;
 	switch (pol) {
 		case ROUND_ROBIN:
 			switch (oldPolicy){
 			case ROUND_ROBIN:
-				//TODO
-			break;
+				cprintf("ROUND_ROBIN");
+				break;
 			case PRIORITY:
-				//TODO
+				cprintf("THIS IS PRIORITY");
+				if(!rrq.switchToPriorityQueuePolicy())
+					panic("Couldn't switch from Round Robin to Priority");
 			break;
 			case E_PRIORITY:
+				cprintf("E_PRIORITY");
 				//TODO
 			break;
 		}break;
@@ -424,7 +445,9 @@ struct proc* getProc() {
 		return pq.extractMin();
 	break;
 	case E_PRIORITY:
-		return pq.extractMin();
+		strucr proc * p = pq.extractMin();
+		//
+		return p;
 		break;
 	default:
 		return rrq.dequeue();
@@ -492,9 +515,7 @@ scheduler(void){
   c->proc = 0;
 
   for(;;){
-		if(p!=0){
-			cprintf("pid of process :%d\n",p->pid);
-		}
+
     // Enable interrupts on this processor.
     sti();
 
@@ -556,7 +577,7 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
 	struct proc * p = myproc();
   p->state = RUNNABLE;
-	sign_to_q(p);
+	sign_to_q(p,0);
   sched();
   release(&ptable.lock);
 }
@@ -608,7 +629,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-	//rpholder.delete(p);
+	rpholder.remove(p);
   sched();
 
   // Tidy up.
@@ -632,7 +653,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-			sign_to_q(p);
+			sign_to_q(p,0);
 		}
 }
 
@@ -660,7 +681,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				sign_to_q(p);
+				sign_to_q(p,0);
 
 			}
       release(&ptable.lock);

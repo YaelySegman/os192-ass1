@@ -92,7 +92,8 @@ void round_robin_sanity(){
     exit(0);
   }
 }
-void round_robin_3sons(){
+void test_3sons(int pol){
+  policy(pol);
   int pid,pid2,pid3;
   pid = fork();
   if(pid>0){
@@ -152,10 +153,14 @@ void make_test(void (*f)(void) , int expected ,char * fail_msg){
   }
 
 }
-
+void some(){
+  printf(2,"start some\n" );
+  policy(2);
+}
 int main(void){
   //round_robin_sanity();
-  round_robin_3sons();
+//  some();
+  test_3sons(2);
   //make_test(test_exit_wait_success, 1, "test_exit_wait_success failed\n");
   //make_test(test_exit_wait_fail, -1 , "test_exit_wait_fail failed\n");
   //make_test(test_detach_success,0,"test_detach_success failed\n");

@@ -57,10 +57,23 @@ int
 sys_policy(void)
 {
   int poli;
-  argint(0, &poli);
+  if(argint(0, &poli)<0){
+    return -1;
+  }
   if(poli != 1 && poli != 2 && poli != 3)
     return -1;
+  poli--;
   policy(poli);
+  return 0;
+}
+int
+sys_priority(void)
+{
+  int priority;
+  if(argint(0, &priority)<0){
+    return -1;
+  }
+  policy(priority);
   return 0;
 }
 
