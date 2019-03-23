@@ -290,8 +290,7 @@ exit(int status)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-	rpholder.remove(p);
-  sched();
+	sched();
   panic("zombie exit");
 }
 
@@ -391,38 +390,39 @@ void sign_to_q(struct proc *p, int isNew){
 }
 
 void policy(int policy) {
-	cprintf("old:%d new: %d", pol,policy);
+	//cprintf("old:%d new: %d", pol,policy);
 	int oldPolicy = pol;
   pol = policy;
 	switch (oldPolicy) {
 		case ROUND_ROBIN:
 			switch (pol){
 			case ROUND_ROBIN:
-				cprintf("ROUND_ROBIN");
-			break;
+				//cprintf("ROUND_ROBIN");
+				break;
 			case PRIORITY:
-				cprintf("THIS IS PRIORITY");
+				//cprintf("THIS IS PRIORITY");
 				if(!rrq.switchToPriorityQueuePolicy())
 					panic("Couldn't switch from Round Robin to Priority");
 			break;
 			case E_PRIORITY:
-				cprintf("E_PRIORITY");
+			//	cprintf("E_PRIORITY");
 				if(!rrq.switchToPriorityQueuePolicy())
 					panic("Couldn't switch from Round Robin to Priority");
 				min_priority = 0;
+				//TODO
 			break;
 		}break;
 		case PRIORITY:
 			switch (pol){
 			case ROUND_ROBIN:
-				cprintf("ROUND_ROBIN");
+	//			cprintf("ROUND_ROBIN");
 				pq.switchToRoundRobinPolicy();
 			break;
 			case PRIORITY:
-			cprintf("THIS IS PRIORITY");
+	//		cprintf("THIS IS PRIORITY");
 			break;
 			case E_PRIORITY:
-				cprintf("E_PRIORITY");
+	//		cprintf("E_PRIORITY");
 				min_priority = 0;
 			break;
 			}
@@ -430,16 +430,16 @@ void policy(int policy) {
 		case E_PRIORITY:
 			switch (pol){
 				case ROUND_ROBIN:
-					cprintf("ROUND_ROBIN");
+					//cprintf("ROUND_ROBIN");
 					pq.switchToRoundRobinPolicy();
 					min_priority = 1;
 				break;
 				case PRIORITY:
-					cprintf("THIS IS PRIORITY");
+			//		cprintf("THIS IS PRIORITY");
 					min_priority = 1;
 				break;
 				case E_PRIORITY:
-					cprintf("E_PRIORITY");
+	//				cprintf("E_PRIORITY");
 				break;
 			}
 		break;
@@ -447,7 +447,7 @@ void policy(int policy) {
 }
 
 struct proc* getProc() {
-	struct proc *p = 0;
+	struct proc * p;
 	switch (pol){
 	case ROUND_ROBIN:
 		return rrq.dequeue();
@@ -473,7 +473,7 @@ struct proc* getProc() {
 			return p;
 		}
 	break;
-	default:
+default:
 		return rrq.dequeue();
 	}
 }
@@ -559,7 +559,7 @@ scheduler(void){
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
       switchkvm();
-
+			rpholder.remove(p);
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
@@ -653,8 +653,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-	rpholder.remove(p);
-  sched();
+	sched();
 
   // Tidy up.
   p->chan = 0;
