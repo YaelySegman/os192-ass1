@@ -23,8 +23,8 @@ int min_priority = 1;
 int max_priority = 10;
 int time_quantum_counter = 0;
 #define DEFAULT_PRIORITY 5
-#define NEW_PROCESS 1
-#define OLD_PROCESS 0
+#define NEW_PROCESS 1 	//true
+#define OLD_PROCESS 0		//false
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -133,6 +133,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+
   return p;
 }
 
@@ -170,7 +171,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	sign_to_q(p,NEW_PROCESS);
+	sign_to_q(p, NEW_PROCESS);
 
   release(&ptable.lock);
 }
@@ -237,10 +238,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	if(!rpholder.getMinAccumulator(&(np->accumulator))){
-		panic("Running Handler struct is empty!!!");
-	}
-	np->priority = DEFAULT_PRIORITY;
+
 	sign_to_q(np,NEW_PROCESS);
 
   release(&ptable.lock);
@@ -326,7 +324,6 @@ wait(int * status)
 				if(p->exit_status != null){
 					*status = p->exit_status;
 
-
 				}
         release(&ptable.lock);
         return pid;
@@ -364,16 +361,53 @@ int detach(int pid){
 	return -1;
 }
 void priority(int priority){
-	if(priority > min_priority && priority > max_priority){
-	 myproc()->priority = priority;
- }
+
+	if(priority >= min_priority && priority <= max_priority){
+		acquire(&ptable.lock);
+	 	myproc()->priority = priority;
+		release(&ptable.lock);
+ 	}
  	else panic("Priorety is not in allowed range");
+
 }
 
-void sign_to_q(struct proc *p, int isNew){
+void updateMinAccumulator(struct proc* p){
+
+	long long acc_pq, acc_rq;
+
+    int pqSuccess = pq.getMinAccumulator(&acc_pq);
+    int rqSuccess = rpholder.getMinAccumulator(&acc_rq);
+
+    if (pqSuccess == 1 && rqSuccess == 1) {
+        p->accumulator = acc_pq < acc_rq ? acc_pq : acc_rq;
+    } else if (pqSuccess == 1) {
+        p->accumulator = acc_pq;
+		}
+    // } else if (rqSuccess == 1) {
+    //     p->accumulator = acc_rq;
+    // }
+		else {
+			p->accumulator = 0;
+		}
+}
+
+void sign_to_q(struct proc *p,int isNew){
+
+
 	if(!isNew){
-		p->accumulator += p->priority;
+		if(pol != ROUND_ROBIN){
+			p->accumulator = p->accumulator + p->priority;
+		}
 	}
+	else{
+		p->priority = DEFAULT_PRIORITY;
+		if(pol != ROUND_ROBIN){
+			updateMinAccumulator(p);
+		}
+
+	}
+
+	if(p->state == RUNNABLE){
 	switch (pol){
 	case ROUND_ROBIN:
 		rrq.enqueue(p);
@@ -388,11 +422,14 @@ void sign_to_q(struct proc *p, int isNew){
 		rrq.enqueue(p);
 	}
 }
+}
 
 void policy(int policy) {
 	//cprintf("old:%d new: %d", pol,policy);
+	 struct proc *pr;
 	int oldPolicy = pol;
   pol = policy;
+	acquire(&ptable.lock);
 	switch (oldPolicy) {
 		case ROUND_ROBIN:
 			switch (pol){
@@ -402,12 +439,12 @@ void policy(int policy) {
 			case PRIORITY:
 				//cprintf("THIS IS PRIORITY");
 				if(!rrq.switchToPriorityQueuePolicy())
-					panic("Couldn't switch from Round Robin to Priority");
+					cprintf("RRQ is empty");
 			break;
 			case E_PRIORITY:
 			//	cprintf("E_PRIORITY");
 				if(!rrq.switchToPriorityQueuePolicy())
-					panic("Couldn't switch from Round Robin to Priority");
+					cprintf("RRQ is empty");
 				min_priority = 0;
 				//TODO
 			break;
@@ -416,6 +453,9 @@ void policy(int policy) {
 			switch (pol){
 			case ROUND_ROBIN:
 	//			cprintf("ROUND_ROBIN");
+			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+				pr->accumulator = 0;
+			}
 				pq.switchToRoundRobinPolicy();
 			break;
 			case PRIORITY:
@@ -431,11 +471,17 @@ void policy(int policy) {
 			switch (pol){
 				case ROUND_ROBIN:
 					//cprintf("ROUND_ROBIN");
+					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+						pr->accumulator = 0;
+					}
 					pq.switchToRoundRobinPolicy();
 					min_priority = 1;
 				break;
 				case PRIORITY:
 			//		cprintf("THIS IS PRIORITY");
+					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+			    	pr->priority = pr->priority == 0 ? 1 : pr->priority;
+			    }
 					min_priority = 1;
 				break;
 				case E_PRIORITY:
@@ -444,38 +490,44 @@ void policy(int policy) {
 			}
 		break;
 	}
+	 release(&ptable.lock);
 }
 
 struct proc* getProc() {
 	struct proc * p;
 	switch (pol){
 	case ROUND_ROBIN:
-		return rrq.dequeue();
+		if(!rrq.isEmpty()){
+			return rrq.dequeue();
+		}
 	break;
 	case PRIORITY:
-		return pq.extractMin();
+		if(!pq.isEmpty()){
+			return pq.extractMin();
+		}
 	break;
 	case E_PRIORITY:
-		p = pq.extractMin();
-		if(lastProc == p){
-			if(time_quantum_counter % 100 == 0){
-				struct proc * otherProc = pq.extractMin();
-				pq.put(p);
-				return otherProc;
+		if(!pq.isEmpty()){
+			p = pq.extractMin();
+			if(lastProc == p){
+				if(time_quantum_counter % 100 == 0){
+					struct proc * otherProc = pq.extractMin();
+					pq.put(p);
+					return otherProc;
+				}
+				else{
+					time_quantum_counter++;
+					return p;
+				}
 			}
 			else{
-				time_quantum_counter++;
+				time_quantum_counter = 0;
 				return p;
 			}
 		}
-		else{
-			time_quantum_counter = 0;
-			return p;
-		}
 	break;
-default:
-		return rrq.dequeue();
 	}
+		return null;
 }
 
 //PAGEBREAK: 42
@@ -559,10 +611,12 @@ scheduler(void){
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
       switchkvm();
+			c->proc = 0;
 			rpholder.remove(p);
+			sign_to_q(p,OLD_PROCESS);
       // Process is done running for now.
       // It should have changed its p->state before coming back.
-      c->proc = 0;
+
     }
     release(&ptable.lock);
 
@@ -601,7 +655,6 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
 	struct proc * p = myproc();
   p->state = RUNNABLE;
-	sign_to_q(p,OLD_PROCESS);
   sched();
   release(&ptable.lock);
 }
@@ -704,7 +757,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				sign_to_q(p,OLD_PROCESS);
+				updateMinAccumulator(p);
 
 			}
       release(&ptable.lock);
