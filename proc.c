@@ -17,6 +17,7 @@ long long getAccumulator(struct proc *p) {
 	//Implement this function, remove the panic line.
 	//panic("getAccumulator: not implemented\n");
 }
+
 enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
 enum policy pol = ROUND_ROBIN;
 int min_priority = 1;
@@ -25,6 +26,66 @@ int time_quantum_counter = 0;
 #define DEFAULT_PRIORITY 5
 #define NEW_PROCESS 1 	//true
 #define OLD_PROCESS 0		//false
+
+typedef boolean (*setPraiorityHandlerType)(int priority, const char **errMsg);
+typedef void (*switchFromPolicyType)(int toPolicy);
+typedef void (*signToQType)(struct proc * p , int isNew);
+typedef struct proc * (*getProccType)();
+typedef boolean (*isQEmptyType)();
+
+static boolean (*volatile setPraiorityHandler)(int priority, const char **errMsg);
+static void (*volatile switchFromPolicy)(int toPolicy);
+static void (*volatile signToQ)(struct proc * p , int isNew);
+static struct proc * (*volatile getProcc)();
+static boolean (*volatile isQEmpty)();
+
+static boolean setRRPraiorityHandler(int priority, const char **errMsg);
+static boolean setPQPraiorityHandler(int priority, const char **errMsg);
+static boolean setExtPQPraiorityHandler(int priority, const char **errMsg);
+
+
+static void  switchFromRRQ (int toPolicy);
+static void  switchFromPQ (int toPolicy);
+static void  switchFromExtPQ (int toPolicy);
+
+static void signToRRQ(struct proc * p , int isNew);
+static void signToPQ(struct proc * p , int isNew);
+static void signToExtPQ(struct proc * p , int isNew);
+
+static struct proc * getRRQProc();
+static struct proc * getPQProc();
+static struct proc * getExtPQProc();
+
+setPraiorityHandlerType setPraiorityHandlerArr [3] = {
+	&setRRPraiorityHandler,
+	&setPQPraiorityHandler,
+	&setExtPQPraiorityHandler
+};
+
+switchFromPolicyType switchFromPolicyArr [3] = {
+	&switchFromRRQ,
+	&switchFromPQ,
+	&switchFromExtPQ
+};
+
+signToQType signToQArr [3] = {
+	&signToRRQ,
+	&signToPQ,
+	&signToExtPQ
+};
+
+getProccType getProccArr [3] = {
+	&getRRQProc,
+	&getPQProc,
+	&getExtPQProc
+};
+
+isQEmptyType isQEmptyArr [3] = {
+	&rrq.isEmpty,
+	&pq.isEmpty,
+	&pq.isEmpty
+};
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -40,10 +101,139 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 static void sign_to_q(struct proc *p, int isNew);
 
+void policy(int policy) {
+	//cprintf("old:%d new: %d", pol,policy);
+	 struct proc *pr;
+	int oldPolicy = pol;
+  pol = policy;
+	acquire(&ptable.lock);
+	switch (oldPolicy) {
+		case ROUND_ROBIN:
+			break;
+		case PRIORITY:
+			switch (pol){
+			case ROUND_ROBIN:
+	//			cprintf("ROUND_ROBIN");
+			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+				pr->accumulator = 0;
+			}
+				pq.switchToRoundRobinPolicy();
+			break;
+			case PRIORITY:
+	//		cprintf("THIS IS PRIORITY");
+			break;
+			case E_PRIORITY:
+	//		cprintf("E_PRIORITY");
+				min_priority = 0;
+			break;
+			}
+		break;
+		case E_PRIORITY:
+			switch (pol){
+				case ROUND_ROBIN:
+					//cprintf("ROUND_ROBIN");
+					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+						pr->accumulator = 0;
+					}
+					pq.switchToRoundRobinPolicy();
+					min_priority = 1;
+				break;
+				case PRIORITY:
+			//		cprintf("THIS IS PRIORITY");
+					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+			    	pr->priority = pr->priority == 0 ? 1 : pr->priority;
+			    }
+					min_priority = 1;
+				break;
+				case E_PRIORITY:
+	//				cprintf("E_PRIORITY");
+				break;
+			}
+		break;
+	}
+	 release(&ptable.lock);
+}
+
+void switchFromRRQ (int toPolicy){
+
+if(!rrq.switchToPriorityQueuePolicy())
+			cprintf("RRQ is empty");
+	if(toPolicy == E_PRIORITY){
+		min_priority = 0;
+	}
+}
+
+void switchFromPQ (int toPolicy){
+
+}
+
+void switchFromExtPQ (int toPolicy){
+
+}
+
+
+void setPriority(struct proc * p,int isNew){
+	if(!isNew){
+		if(pol != ROUND_ROBIN){
+			p->accumulator = p->accumulator + p->priority;
+		}
+	}
+	else{
+		p->priority = DEFAULT_PRIORITY;
+		if(pol != ROUND_ROBIN){
+			updateMinAccumulator(p);
+		}
+	}
+}
+
+void signToRRQ(struct proc * p , int isNew){
+	setPriority(p, isNew);
+	rrq.enqueue(p);
+}
+void signToPQ(struct proc * p , int isNew){
+	setPriority(p, isNew);
+	pq.put(p);
+}
+void signToExtPQ(struct proc * p , int isNew){
+	setPriority(p, isNew);
+	pq.put(p);
+}
+
+struct proc * getRRQProc(){
+	return rrq.dequeue();
+}
+
+struct proc * getPQProc(){
+	return pq.extractMin();
+}
+
+struct proc * getExtPQProc(){
+	p = pq.extractMin();
+	if(lastProc == p){
+		if(time_quantum_counter % 100 == 0){
+			struct proc * otherProc = pq.extractMin();
+			pq.put(p);
+			return otherProc;
+		}
+		else{
+			time_quantum_counter++;
+			return p;
+		}
+	}
+	else{
+		time_quantum_counter = 0;
+		return p;
+	}
+}
 
 void
 pinit(void)
 {
+	setPraiorityHandler = setPraiorityHandlerArr[pol];
+	switchFromPolicy = switchFromPolicyArr[pol];
+	signToQ = signToQArr[pol];
+	getProc = getProcArr[pol];
+	isQEmpty = isQEmpty[pol];
   initlock(&ptable.lock, "ptable");
 }
 
@@ -391,107 +581,8 @@ void updateMinAccumulator(struct proc* p){
 		}
 }
 
-void sign_to_q(struct proc *p,int isNew){
 
 
-	if(!isNew){
-		if(pol != ROUND_ROBIN){
-			p->accumulator = p->accumulator + p->priority;
-		}
-	}
-	else{
-		p->priority = DEFAULT_PRIORITY;
-		if(pol != ROUND_ROBIN){
-			updateMinAccumulator(p);
-		}
-
-	}
-
-	if(p->state == RUNNABLE){
-	switch (pol){
-	case ROUND_ROBIN:
-		rrq.enqueue(p);
-	break;
-	case PRIORITY:
-		pq.put(p);
-	break;
-	case E_PRIORITY:
-		pq.put(p);
-		break;
-	default:
-		rrq.enqueue(p);
-	}
-}
-}
-
-void policy(int policy) {
-	//cprintf("old:%d new: %d", pol,policy);
-	 struct proc *pr;
-	int oldPolicy = pol;
-  pol = policy;
-	acquire(&ptable.lock);
-	switch (oldPolicy) {
-		case ROUND_ROBIN:
-			switch (pol){
-			case ROUND_ROBIN:
-				//cprintf("ROUND_ROBIN");
-				break;
-			case PRIORITY:
-				//cprintf("THIS IS PRIORITY");
-				if(!rrq.switchToPriorityQueuePolicy())
-					cprintf("RRQ is empty");
-			break;
-			case E_PRIORITY:
-			//	cprintf("E_PRIORITY");
-				if(!rrq.switchToPriorityQueuePolicy())
-					cprintf("RRQ is empty");
-				min_priority = 0;
-				//TODO
-			break;
-		}break;
-		case PRIORITY:
-			switch (pol){
-			case ROUND_ROBIN:
-	//			cprintf("ROUND_ROBIN");
-			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-				pr->accumulator = 0;
-			}
-				pq.switchToRoundRobinPolicy();
-			break;
-			case PRIORITY:
-	//		cprintf("THIS IS PRIORITY");
-			break;
-			case E_PRIORITY:
-	//		cprintf("E_PRIORITY");
-				min_priority = 0;
-			break;
-			}
-		break;
-		case E_PRIORITY:
-			switch (pol){
-				case ROUND_ROBIN:
-					//cprintf("ROUND_ROBIN");
-					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-						pr->accumulator = 0;
-					}
-					pq.switchToRoundRobinPolicy();
-					min_priority = 1;
-				break;
-				case PRIORITY:
-			//		cprintf("THIS IS PRIORITY");
-					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-			    	pr->priority = pr->priority == 0 ? 1 : pr->priority;
-			    }
-					min_priority = 1;
-				break;
-				case E_PRIORITY:
-	//				cprintf("E_PRIORITY");
-				break;
-			}
-		break;
-	}
-	 release(&ptable.lock);
-}
 
 struct proc* getProc() {
 	struct proc * p;

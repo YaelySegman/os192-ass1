@@ -128,6 +128,7 @@ boolean test_policy_helper(int *priority_mod, int policy) {
         if (pid < 0) {
             break;
         } else if (pid == 0) {
+          printf(2,"forked child no:%d\n",i);
             if (priority_mod) {
                 if ((i % *(priority_mod)) == 0 && policy == PRIORITY) {
                     priority(1);
