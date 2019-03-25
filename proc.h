@@ -54,6 +54,7 @@ struct proc {
   int exit_status;               // procs exit code assigned to exit call
   long long accumulator;         //accumulator of priority
   int priority ;                 //process priority
+  uint bedTime;           //process sleeping time
 };
 
 // Process memory is laid out contiguously, low addresses first:

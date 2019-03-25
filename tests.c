@@ -144,12 +144,12 @@ void test_3sons(int pol){
 
 void make_test(void (*f)(void) , int expected ,char * fail_msg){
 
-  (*f)();
+  f();
   if(ans == expected)
     success++;
   else {
     fail++;
-    printf(2,"%s\n",fail_msg);
+    printf(1,"%s\n",fail_msg);
   }
 
 }
@@ -161,8 +161,8 @@ int main(void){
   //round_robin_sanity();
 
 //  some();
-  for (int i=0;i<100;i++){
-  test_3sons(1);
+  for (int i=0;i<20;i++){
+  test_3sons(2);
 }
 
   //make_test(test_exit_wait_success, 1, "test_exit_wait_success failed\n");

@@ -9,6 +9,7 @@
 #define PRIORITY 2
 #define EXTENED_PRIORITY 3
 
+
 struct perf {
     int ctime;                     // Creation time
     int ttime;                     // Termination time
@@ -18,11 +19,11 @@ struct perf {
 };
 
 
-typedef boolean (test_runner)();
+typedef boolean (*test_runner)();
 
-void run_test(test_runner *test, char *name) {
+void run_test(test_runner test, char *name) {
     printf(1, "========== Test - %s: Begin ==========\n", name);
-    boolean result = (*test)();
+    boolean result = test();
     if (result) {
         printf(1, "========== Test - %s: Passed ==========\n", name);
     } else {
@@ -221,7 +222,7 @@ boolean test_starvation_helper(int npolicy, int npriority) {
         } else if (pid == 0) {
             sleep(5);
             priority(npriority);
-            for (;;) {};
+            for (;;);
         } else {
             pid_arr[i] = pid;
         }
@@ -233,7 +234,7 @@ boolean test_starvation_helper(int npolicy, int npriority) {
             wait(null);
         }
     }
-    policy(ROUND_ROBIN);
+   policy(ROUND_ROBIN);
     return result;
 }
 
@@ -279,12 +280,13 @@ boolean test_starvation() {
 int main(void) {
   //  run_test(&test_exit_wait, "exit&wait");
 //    run_test(&test_detach, "detach");
-//    run_test(&test_round_robin_policy, "round robin policy");
-    run_test(&test_priority_policy, "priority policy");
-    //run_test(&test_extended_priority_policy, "extended priority policy");
-  //  run_test(&test_accumulator, "accumulator");
-  //  run_test(&test_starvation, "starvation");
-  //  run_test(&test_performance_round_robin, "performance round robin");
+printf(1,"something\n");
+   run_test(test_round_robin_policy, "round robin policy");
+    run_test(test_priority_policy, "priority policy");
+    run_test(test_extended_priority_policy, "extended priority policy");
+    run_test(test_accumulator, "accumulator");
+   run_test(&test_starvation, "starvation");
+//  run_test(&test_performance_round_robin, "performance round robin");
   //  run_test(&test_performance_priority, "performance priority");
   //  run_test(&test_performance_extended_priority, "performance extended priority");
     exit(0);

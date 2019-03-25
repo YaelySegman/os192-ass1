@@ -69,11 +69,11 @@ sys_policy(void)
 int
 sys_priority(void)
 {
-  int priority;
-  if(argint(0, &priority)<0){
+  int priorityy;
+  if(argint(0, &priorityy)<0){
     return -1;
   }
-  policy(priority);
+  priority(priorityy);
   return 0;
 }
 

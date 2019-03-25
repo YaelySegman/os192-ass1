@@ -50,7 +50,7 @@ static MapNode                    *freeNodes;
 
 static char                       *data;
 static uint                       spaceLeft;
-                
+
 static char* mymalloc(uint size) {
 	if(spaceLeft < size) {
 		data = kalloc();
@@ -224,7 +224,7 @@ static MapNode* allocNode(Proc *p, long long key) {
 
 Link* Link::getLast() {
 	Link* ans = this;
-	
+
 	while(ans->next)
 		ans = ans->next;
 
@@ -247,7 +247,7 @@ void LinkedList::append(Link *link) {
 
 bool LinkedList::enqueue(Proc *p) {
 	Link *link = allocLink(p);
-	
+
 	if(!link)
 		return false;
 
@@ -261,21 +261,21 @@ Proc* LinkedList::dequeue() {
 
 	Proc *p = first->p;
 	Link *next = first->next;
-	
+
 	deallocLink(first);
-	
+
 	first = next;
 
 	if(isEmpty())
 		last = null;
-	
+
 	return p;
 }
 
 bool LinkedList::remove(Proc *p) {
 	if(isEmpty())
 		return false;
-	
+
 	if(first->p == p) {
 		dequeue();
 		return true;
@@ -286,7 +286,7 @@ bool LinkedList::remove(Proc *p) {
 	while(cur) {
 		if(cur->p == p) {
 			prev->next = cur->next;
-			
+
 			if(!(cur->next)) //removes the last link
 				last = prev;
 
@@ -306,12 +306,12 @@ bool LinkedList::remove(Proc *p) {
 bool LinkedList::transfer() {
 	if(!priorityQ->isEmpty())
 		return false;
-	
+
 	if(!isEmpty()) {
 		MapNode *node = allocNode(0);
 		if(!node)
 			return false;
-		
+
 		node->listOfProcs.first = first;
 		node->listOfProcs.last = last;
 		first = last = null;
@@ -325,7 +325,7 @@ bool LinkedList::getMinKey(long long *pkey) {
 		return false;
 
 	long long minKey = getAccumulator(first->p);
-	
+
 	forEach([&](Proc *p) {
 		long long key = getAccumulator(p);
 		if(key < minKey)
@@ -333,7 +333,7 @@ bool LinkedList::getMinKey(long long *pkey) {
 	});
 
 	*pkey = minKey;
-	
+
 	return true;
 }
 
@@ -374,7 +374,7 @@ bool MapNode::put(Proc *p) { //we can not use recursion, since the stack of xv6 
 }
 
 MapNode* MapNode::getMinNode() { //no recursion.
-	MapNode* minNode = this;	
+	MapNode* minNode = this;
 	while(minNode->left)
 		minNode = minNode->left;
 
@@ -399,7 +399,7 @@ bool Map::put(Proc *p) {
 		root = allocNode(p, key);
 		return !isEmpty();
 	}
-	
+
 	return root->put(p);
 }
 
@@ -418,7 +418,7 @@ Proc* Map::extractMin() {
 	MapNode *minNode = root->getMinNode();
 
 	Proc *p = minNode->dequeue();
-	
+
 	if(minNode->isEmpty()) {
 		if(minNode == root) {
 			root = minNode->right;

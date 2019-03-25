@@ -17,10 +17,14 @@ long long getAccumulator(struct proc *p) {
 }
 
 enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
-enum policy pol = ROUND_ROBIN;
+volatile int pol = ROUND_ROBIN;
 int min_priority = 1;
 int max_priority = 10;
 int time_quantum_counter = 0;
+long long MAX_LONG  = 9223372036854775807;
+struct proc * forgottenProc;
+struct proc *newestProc;
+
 #define DEFAULT_PRIORITY 5
 #define NEW_PROCESS 1 	//true
 #define OLD_PROCESS 0		//false
@@ -29,7 +33,7 @@ int time_quantum_counter = 0;
 //typedef void (*signToQType)(struct proc * p , int isNew);
 //typedef struct proc * (*getProcType)(void);
 //typedef boolean (*isQEmptyType)(void);
-
+static void updateStarved(struct proc * p);
 static void (*volatile switchFromPolicy)(int toPolicy);
 static void (*volatile signToQ)(struct proc * p , int isNew);
 static struct proc * (*volatile getProc)(void);
@@ -103,9 +107,6 @@ void policy(int toPolicy) {
 	getProc = getProcArr[toPolicy];
 	isQEmpty = isQEmptyArr[toPolicy];
 	release(&ptable.lock);
-
-
-
 }
 
 boolean isEmptyRRQ(){
@@ -184,62 +185,95 @@ void handleSettings(struct proc * p,int isNew){
 void signToRRQ(struct proc * p , int isNew){
 if (p->state == RUNNABLE){
 	handleSettings(p, isNew);
+	updateStarved(p);
 	rrq.enqueue(p);
 }
-	else panic("rrp not Runnable!!!!");
+	else panic("signToRRQ: proc not Runnable!\n");
 
 }
 void signToPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
 	handleSettings(p, isNew);
+	updateStarved(p);
 	pq.put(p);
 }
-	else panic("Pq not Runnable!!!!");
+	else panic("signToPQ: proc not Runnable!\n");
 }
 void signToExtPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
 		handleSettings(p, isNew);
-	pq.put(p);
+		updateStarved(p);
+		pq.put(p);
 }
-	else panic("extp not Runnable!!!!");
+	else panic("signToExtPQ: proc not Runnable!\n");
+}
+
+void updateStarved(struct proc * p){
+	newestProc = p;
+	if(!forgottenProc){
+		forgottenProc = p;
+	}
+	else{
+		if(forgottenProc->bedTime >= p->bedTime){
+				forgottenProc = p;
+		}
+	}
 }
 
 struct proc * getRRQProc(){
-	struct proc * p = rrq.dequeue();
-	if (p == null){
-		//panic("getRRQProc failed!!");
+	if(rrq.isEmpty()){
+		panic("getRRQProc failed!!");
 	}
-	return p;
+	return rrq.dequeue();
+
+
 }
 
 struct proc * getPQProc(){
-	struct proc * p =  pq.extractMin();
-	if (p == null){
-		panic("getRRQProc failed!!");
+	if (pq.isEmpty()){
+		panic("getPQProc failed!!");
 	}
-	return p;
+	return pq.extractMin();
+
+
 }
 
 struct proc * getExtPQProc(){
 	struct proc * p = pq.extractMin();
+	struct proc * nextProc;
 	if(lastProc == p){
-		if(time_quantum_counter % 100 == 0){
-			struct proc * otherProc = pq.extractMin();
-			pq.put(p);
-			return otherProc;
+		if(time_quantum_counter % 100 == 0 && !pq.isEmpty()){
+				if(forgottenProc->state == RUNNABLE){
+					pq.put(p);
+					if(!pq.extractProc(forgottenProc)){
+						panic("getExtPQProc : extractProc failed ,forgotten proc is not in queue");
+					}
+					time_quantum_counter = 1;
+					forgottenProc->bedTime = MAX_LONG;
+					nextProc = forgottenProc;
+				}
+				else if(newestProc->state == RUNNABLE){
+					pq.put(p);
+					if(!pq.extractProc(newestProc)){
+						panic("getExtPQProc : extractProc failed ,newestProc proc is not in queue");
+					}
+					time_quantum_counter = 1;
+					newestProc->bedTime = MAX_LONG;
+					nextProc = newestProc;
+				}
+				else panic("getExtPQProc: newestProc is not runnable");
+
 		}
 		else{
 			time_quantum_counter++;
-			return p;
+			nextProc =  p;
 		}
 	}
 	else{
-		if (p == null){
-			panic("getPQProc Failed!!");
-		}
 		time_quantum_counter = 0;
-		return p;
+		nextProc =  p;
 	}
+	return nextProc;
 }
 
 void
@@ -374,6 +408,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+	p->bedTime = ticks;
 	signToQ(p, NEW_PROCESS);
 
   release(&ptable.lock);
@@ -441,7 +476,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+	np->bedTime = ticks;
 	signToQ(np,NEW_PROCESS);
 
   release(&ptable.lock);
@@ -523,6 +558,7 @@ wait(int * status)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+				p->bedTime = MAX_LONG;
 				// discard the status if it's null
 				if(status != null){
 					*status = p->exit_status;
@@ -539,6 +575,7 @@ wait(int * status)
     }
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
 
   }
@@ -612,9 +649,9 @@ scheduler(void){
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-		p = getProc();
-		if (p /*&&!isQEmpty()*/){
 
+		if (!isQEmpty()){
+			p = getProc();
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
@@ -624,6 +661,7 @@ scheduler(void){
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
 			rpholder.remove(p);
+			p->bedTime = ticks;
 			switchkvm();
 			c->proc = 0;
 			 // Process is done running for now.
@@ -719,7 +757,11 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+//	int curTick = ticks;
+	p->bedTime = ticks;
 	sched();
+	//int nextTick = ticks;
+	//p->sleepTime += (nextTick - curTick);
 
   // Tidy up.
   p->chan = 0;
