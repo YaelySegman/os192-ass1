@@ -14,8 +14,6 @@ extern RunningProcessesHolder rpholder;
 
 long long getAccumulator(struct proc *p) {
 	return p->accumulator;
-	//Implement this function, remove the panic line.
-	//panic("getAccumulator: not implemented\n");
 }
 
 enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
@@ -27,22 +25,15 @@ int time_quantum_counter = 0;
 #define NEW_PROCESS 1 	//true
 #define OLD_PROCESS 0		//false
 
-typedef boolean (*setPraiorityHandlerType)(int priority, const char **errMsg);
-typedef void (*switchFromPolicyType)(int toPolicy);
-typedef void (*signToQType)(struct proc * p , int isNew);
-typedef struct proc * (*getProccType)();
-typedef boolean (*isQEmptyType)();
+//typedef void (*switchFromPolicyType)(int toPolicy);
+//typedef void (*signToQType)(struct proc * p , int isNew);
+//typedef struct proc * (*getProcType)(void);
+//typedef boolean (*isQEmptyType)(void);
 
-static boolean (*volatile setPraiorityHandler)(int priority, const char **errMsg);
 static void (*volatile switchFromPolicy)(int toPolicy);
 static void (*volatile signToQ)(struct proc * p , int isNew);
-static struct proc * (*volatile getProcc)();
-static boolean (*volatile isQEmpty)();
-
-static boolean setRRPraiorityHandler(int priority, const char **errMsg);
-static boolean setPQPraiorityHandler(int priority, const char **errMsg);
-static boolean setExtPQPraiorityHandler(int priority, const char **errMsg);
-
+static struct proc * (*volatile getProc)(void);
+static boolean (*volatile isQEmpty)(void);
 
 static void  switchFromRRQ (int toPolicy);
 static void  switchFromPQ (int toPolicy);
@@ -52,38 +43,37 @@ static void signToRRQ(struct proc * p , int isNew);
 static void signToPQ(struct proc * p , int isNew);
 static void signToExtPQ(struct proc * p , int isNew);
 
-static struct proc * getRRQProc();
-static struct proc * getPQProc();
-static struct proc * getExtPQProc();
+static struct proc * getRRQProc(void);
+static struct proc * getPQProc(void);
+static struct proc * getExtPQProc(void);
 
-setPraiorityHandlerType setPraiorityHandlerArr [3] = {
-	&setRRPraiorityHandler,
-	&setPQPraiorityHandler,
-	&setExtPQPraiorityHandler
+static boolean isEmptyRRQ(void);
+static boolean isEmptyPQ(void);
+
+static void updateMinAccumulator(struct proc* p);
+
+void (*switchFromPolicyArr[])(int toPolicy) = {
+	[0] switchFromRRQ,
+	[1] switchFromPQ,
+	[2] switchFromExtPQ
 };
 
-switchFromPolicyType switchFromPolicyArr [3] = {
-	&switchFromRRQ,
-	&switchFromPQ,
-	&switchFromExtPQ
+void (* signToQArr [])(struct proc * p , int isNew) = {
+	[0] signToRRQ,
+	[1] signToPQ,
+	[2] signToExtPQ
 };
 
-signToQType signToQArr [3] = {
-	&signToRRQ,
-	&signToPQ,
-	&signToExtPQ
+struct proc * (*getProcArr [3])(void) = {
+	[0] getRRQProc,
+	[1] getPQProc,
+	[2] getExtPQProc
 };
 
-getProccType getProccArr [3] = {
-	&getRRQProc,
-	&getPQProc,
-	&getExtPQProc
-};
-
-isQEmptyType isQEmptyArr [3] = {
-	&rrq.isEmpty,
-	&pq.isEmpty,
-	&pq.isEmpty
+boolean (*isQEmptyArr [3])(void) = {
+	[0] isEmptyRRQ,
+	[1] isEmptyPQ,
+	[2] isEmptyPQ
 };
 
 struct {
@@ -99,87 +89,92 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
-static void sign_to_q(struct proc *p, int isNew);
 
-void policy(int policy) {
-	//cprintf("old:%d new: %d", pol,policy);
-	 struct proc *pr;
-	int oldPolicy = pol;
-  pol = policy;
-	acquire(&ptable.lock);
-	switch (oldPolicy) {
-		case ROUND_ROBIN:
-			break;
-		case PRIORITY:
-			switch (pol){
-			case ROUND_ROBIN:
-	//			cprintf("ROUND_ROBIN");
-			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-				pr->accumulator = 0;
-			}
-				pq.switchToRoundRobinPolicy();
-			break;
-			case PRIORITY:
-	//		cprintf("THIS IS PRIORITY");
-			break;
-			case E_PRIORITY:
-	//		cprintf("E_PRIORITY");
-				min_priority = 0;
-			break;
-			}
-		break;
-		case E_PRIORITY:
-			switch (pol){
-				case ROUND_ROBIN:
-					//cprintf("ROUND_ROBIN");
-					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-						pr->accumulator = 0;
-					}
-					pq.switchToRoundRobinPolicy();
-					min_priority = 1;
-				break;
-				case PRIORITY:
-			//		cprintf("THIS IS PRIORITY");
-					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
-			    	pr->priority = pr->priority == 0 ? 1 : pr->priority;
-			    }
-					min_priority = 1;
-				break;
-				case E_PRIORITY:
-	//				cprintf("E_PRIORITY");
-				break;
-			}
-		break;
+void policy(int toPolicy) {
+	if(pol == toPolicy){
+		cprintf("Allready in this policy, doing nothing...\n");
+		return;
 	}
-	 release(&ptable.lock);
+	acquire(&ptable.lock);
+	switchFromPolicy(toPolicy);
+	pol = toPolicy;
+	switchFromPolicy = switchFromPolicyArr[toPolicy];
+	signToQ = signToQArr[toPolicy];
+	getProc = getProcArr[toPolicy];
+	isQEmpty = isQEmptyArr[toPolicy];
+	release(&ptable.lock);
+
+
+
+}
+
+boolean isEmptyRRQ(){
+	return rrq.isEmpty();
+}
+
+boolean isEmptyPQ(){
+	return pq.isEmpty();
 }
 
 void switchFromRRQ (int toPolicy){
-
-if(!rrq.switchToPriorityQueuePolicy())
-			cprintf("RRQ is empty");
+	struct proc *pr;
+	if(!rrq.switchToPriorityQueuePolicy()){
+		panic("switchFromRRQ: falied");
+	}
 	if(toPolicy == E_PRIORITY){
-		min_priority = 0;
+			min_priority = 0;
+		}
+	else{
+		min_priority = 1;
+		for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+			pr->priority = pr->priority == 0 ? 1 :pr->priority;
+		}
 	}
 }
 
 void switchFromPQ (int toPolicy){
+struct proc * pr;
+	if(toPolicy == ROUND_ROBIN){
+			if(!pq.switchToRoundRobinPolicy()){
+				panic("switchFromPQ: falied");
 
+			}
+			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+				pr->accumulator = 0;
+			}
+	}
+	else {
+		min_priority=0;
+	}
 }
-
 void switchFromExtPQ (int toPolicy){
+	struct proc * pr;
+	if(toPolicy == ROUND_ROBIN){
+			if(!pq.switchToRoundRobinPolicy()){
+				panic("switchFromExtPQ: falied");
+			}
+
+			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+				pr->accumulator = 0;
+			}
+	}
+		else {
+			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
+				pr->priority = pr->priority == 0 ? 1 :pr->priority;
+			}
+			min_priority = 1;
+	}
 
 }
 
 
-void setPriority(struct proc * p,int isNew){
+void handleSettings(struct proc * p,int isNew){
 	if(!isNew){
 		if(pol != ROUND_ROBIN){
 			p->accumulator = p->accumulator + p->priority;
 		}
 	}
 	else{
-		p->priority = DEFAULT_PRIORITY;
 		if(pol != ROUND_ROBIN){
 			updateMinAccumulator(p);
 		}
@@ -187,28 +182,46 @@ void setPriority(struct proc * p,int isNew){
 }
 
 void signToRRQ(struct proc * p , int isNew){
-	setPriority(p, isNew);
+if (p->state == RUNNABLE){
+	handleSettings(p, isNew);
 	rrq.enqueue(p);
 }
+	else panic("rrp not Runnable!!!!");
+
+}
 void signToPQ(struct proc * p , int isNew){
-	setPriority(p, isNew);
+	if (p->state == RUNNABLE){
+	handleSettings(p, isNew);
 	pq.put(p);
 }
+	else panic("Pq not Runnable!!!!");
+}
 void signToExtPQ(struct proc * p , int isNew){
-	setPriority(p, isNew);
+	if (p->state == RUNNABLE){
+		handleSettings(p, isNew);
 	pq.put(p);
+}
+	else panic("extp not Runnable!!!!");
 }
 
 struct proc * getRRQProc(){
-	return rrq.dequeue();
+	struct proc * p = rrq.dequeue();
+	if (p == null){
+		//panic("getRRQProc failed!!");
+	}
+	return p;
 }
 
 struct proc * getPQProc(){
-	return pq.extractMin();
+	struct proc * p =  pq.extractMin();
+	if (p == null){
+		panic("getRRQProc failed!!");
+	}
+	return p;
 }
 
 struct proc * getExtPQProc(){
-	p = pq.extractMin();
+	struct proc * p = pq.extractMin();
 	if(lastProc == p){
 		if(time_quantum_counter % 100 == 0){
 			struct proc * otherProc = pq.extractMin();
@@ -221,6 +234,9 @@ struct proc * getExtPQProc(){
 		}
 	}
 	else{
+		if (p == null){
+			panic("getPQProc Failed!!");
+		}
 		time_quantum_counter = 0;
 		return p;
 	}
@@ -229,11 +245,10 @@ struct proc * getExtPQProc(){
 void
 pinit(void)
 {
-	setPraiorityHandler = setPraiorityHandlerArr[pol];
 	switchFromPolicy = switchFromPolicyArr[pol];
 	signToQ = signToQArr[pol];
 	getProc = getProcArr[pol];
-	isQEmpty = isQEmpty[pol];
+	isQEmpty = isQEmptyArr[pol];
   initlock(&ptable.lock, "ptable");
 }
 
@@ -286,9 +301,7 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
-
   acquire(&ptable.lock);
-
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == UNUSED)
       goto found;
@@ -301,7 +314,7 @@ found:
   p->pid = nextpid++;
 
   release(&ptable.lock);
-
+	p->priority = DEFAULT_PRIORITY;
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
     p->state = UNUSED;
@@ -361,7 +374,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	sign_to_q(p, NEW_PROCESS);
+	signToQ(p, NEW_PROCESS);
 
   release(&ptable.lock);
 }
@@ -429,7 +442,7 @@ fork(void)
 
   np->state = RUNNABLE;
 
-	sign_to_q(np,NEW_PROCESS);
+	signToQ(np,NEW_PROCESS);
 
   release(&ptable.lock);
 
@@ -511,9 +524,8 @@ wait(int * status)
         p->killed = 0;
         p->state = UNUSED;
 				// discard the status if it's null
-				if(p->exit_status != null){
+				if(status != null){
 					*status = p->exit_status;
-
 				}
         release(&ptable.lock);
         return pid;
@@ -572,100 +584,14 @@ void updateMinAccumulator(struct proc* p){
         p->accumulator = acc_pq < acc_rq ? acc_pq : acc_rq;
     } else if (pqSuccess == 1) {
         p->accumulator = acc_pq;
-		}
-    // } else if (rqSuccess == 1) {
-    //     p->accumulator = acc_rq;
-    // }
+    } else if (rqSuccess == 1) {
+        p->accumulator = acc_rq;
+    }
 		else {
 			p->accumulator = 0;
 		}
 }
 
-
-
-
-struct proc* getProc() {
-	struct proc * p;
-	switch (pol){
-	case ROUND_ROBIN:
-		if(!rrq.isEmpty()){
-			return rrq.dequeue();
-		}
-	break;
-	case PRIORITY:
-		if(!pq.isEmpty()){
-			return pq.extractMin();
-		}
-	break;
-	case E_PRIORITY:
-		if(!pq.isEmpty()){
-			p = pq.extractMin();
-			if(lastProc == p){
-				if(time_quantum_counter % 100 == 0){
-					struct proc * otherProc = pq.extractMin();
-					pq.put(p);
-					return otherProc;
-				}
-				else{
-					time_quantum_counter++;
-					return p;
-				}
-			}
-			else{
-				time_quantum_counter = 0;
-				return p;
-			}
-		}
-	break;
-	}
-		return null;
-}
-
-//PAGEBREAK: 42
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run
-//  - swtch to start running that process
-//  - eventually that process transfers control
-//      via swtch back to the scheduler.
-//ORIGINAL SKEDULAR
-void
-a_scheduler(void){
-  struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
-
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
-
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-			rrq.enqueue(p);
-      c->proc = getProc();
-
-      switchuvm(p);
-      p->state = RUNNING;
-			rpholder.add(p);
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
-
-  }
-}
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -681,31 +607,26 @@ scheduler(void){
   c->proc = 0;
 
   for(;;){
-
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
 		p = getProc();
-		lastProc = p;
-    if(p != 0 && p->state == RUNNABLE) {
+		if (p /*&&!isQEmpty()*/){
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-
       c->proc = p;
-
       switchuvm(p);
       p->state = RUNNING;
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
-      switchkvm();
-			c->proc = 0;
 			rpholder.remove(p);
-			sign_to_q(p,OLD_PROCESS);
-      // Process is done running for now.
+			switchkvm();
+			c->proc = 0;
+			 // Process is done running for now.
       // It should have changed its p->state before coming back.
 
     }
@@ -743,9 +664,10 @@ sched(void)
 void
 yield(void)
 {
-  acquire(&ptable.lock);  //DOC: yieldlock
 	struct proc * p = myproc();
+  acquire(&ptable.lock);  //DOC: yieldlock
   p->state = RUNNABLE;
+	signToQ(p, OLD_PROCESS);
   sched();
   release(&ptable.lock);
 }
@@ -820,7 +742,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-			sign_to_q(p,OLD_PROCESS);
+			signToQ(p,NEW_PROCESS);
 		}
 }
 
@@ -848,8 +770,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING){
         p->state = RUNNABLE;
-				updateMinAccumulator(p);
-
+				signToQ(p,NEW_PROCESS);
 			}
       release(&ptable.lock);
       return 0;
