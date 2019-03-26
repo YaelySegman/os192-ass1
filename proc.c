@@ -20,7 +20,7 @@ enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
 volatile int pol = ROUND_ROBIN;
 int min_priority = 1;
 int max_priority = 10;
-int time_quantum_counter = 1;
+volatile uint time_quantum_counter = 1;
 long long MAX_LONG  = 9223372036854775807;
 struct proc * forgottenProc;
 struct proc *newestProc;
@@ -29,11 +29,7 @@ struct proc *newestProc;
 #define NEW_PROCESS 1 	//true
 #define OLD_PROCESS 0		//false
 
-//typedef void (*switchFromPolicyType)(int toPolicy);
-//typedef void (*signToQType)(struct proc * p , int isNew);
-//typedef struct proc * (*getProcType)(void);
-//typedef boolean (*isQEmptyType)(void);
-static void updateStarved(struct proc * p);
+
 static void (*volatile switchFromPolicy)(int toPolicy);
 static void (*volatile signToQ)(struct proc * p , int isNew);
 static struct proc * (*volatile getProc)(void);
@@ -192,7 +188,7 @@ if (p->state == RUNNABLE){
 	p->rutime += ticks - p->srtime;
 	p->rtime = ticks;
 	handleSettings(p, isNew);
-	updateStarved(p);
+	//updateStarved(p);
 	rrq.enqueue(p);
 }
 	else panic("signToRRQ: proc not Runnable!\n");
@@ -203,7 +199,7 @@ void signToPQ(struct proc * p , int isNew){
 	p->rutime += ticks - p->srtime;
 	p->rtime = ticks;
 	handleSettings(p, isNew);
-	updateStarved(p);
+	//updateStarved(p);
 	pq.put(p);
 }
 	else panic("signToPQ: proc not Runnable!\n");
@@ -213,22 +209,12 @@ void signToExtPQ(struct proc * p , int isNew){
 		p->rutime += ticks - p->srtime;
 		p->rtime = ticks;
 		handleSettings(p, isNew);
-		updateStarved(p);
+		//updateStarved(p);
 		pq.put(p);
 }
 	else panic("signToExtPQ: proc not Runnable!\n");
 }
 
-void updateStarved(struct proc * p){
-
-	if(forgottenProc == null || forgottenProc->state != RUNNABLE || forgottenProc->bedTime > p->bedTime){
-		forgottenProc = p;
-	}
-	if(!newestProc|| newestProc->state!=RUNNABLE){
-		newestProc = p;
-	}
-
-}
 
 struct proc * getRRQProc(){
 	/*if(rrq.isEmpty()){
@@ -252,35 +238,40 @@ struct proc * getPQProc(){
 
 struct proc * getExtPQProc(){
 	struct proc * p = pq.extractMin();
-	/*if(!p){
+	if(!p){
 		panic("getExtPQProc: Queue is empty!");
-	}*/
-	struct proc * nextProc = p;
-	if(lastProc == p){
+	}
+	struct proc * nextProc =0;
+
 		if(time_quantum_counter % 100 == 0 && !pq.isEmpty()){
-				if(forgottenProc->state == RUNNABLE){
-					pq.put(p);
-					if(!pq.extractProc(forgottenProc)){
-						panic("getExtPQProc : extractProc failed ,forgotten proc is not in queue");
-					}
-					time_quantum_counter = 1;
-					forgottenProc->bedTime = MAX_LONG;
-					nextProc = forgottenProc;
-				}
+			uint min = MAX_LONG;
+			struct proc *cp;
 
-				else panic("getExtPQProc: forgotten proc is not runnable");
+			for (cp = ptable.proc; cp < &ptable.proc[NPROC]; cp++) {
+				if (cp->state == RUNNABLE) {
+						if (cp->bedTime < min) {
+								nextProc = cp;
+								min = cp->bedTime;
+							 }
+					 }
 
+			 }
+			 if(nextProc == null){
+				 panic("no runnable proc to choose");
+			 }
+			 if(p!=nextProc){
+				 pq.put(p);
+				 if(!pq.extractProc(nextProc)){
+					 panic("RUNNABLE proc not in queue");
+				 }
+			 }
 		}
 		else{
-			time_quantum_counter++;
+
 			nextProc =  p;
 		}
-	}
-	else{
-		time_quantum_counter = 1;
-		nextProc =  p;
 
-	}
+	time_quantum_counter++;
 	lastProc = nextProc;
 	return nextProc;
 }
@@ -417,9 +408,8 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	p->bedTime = ticks;
+	p->bedTime = time_quantum_counter;
 	signToQ(p, NEW_PROCESS);
-
   release(&ptable.lock);
 }
 
@@ -485,7 +475,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	np->bedTime = ticks;
+	np->bedTime = time_quantum_counter;
 	signToQ(np,NEW_PROCESS);
 
   release(&ptable.lock);
@@ -673,7 +663,7 @@ scheduler(void){
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
 			rpholder.remove(p);
-			p->bedTime = ticks;
+			p->bedTime = time_quantum_counter;
 			switchkvm();
 			c->proc = 0;
 			 // Process is done running for now.
