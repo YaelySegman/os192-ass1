@@ -189,6 +189,7 @@ void handleSettings(struct proc * p,int isNew){
 
 void signToRRQ(struct proc * p , int isNew){
 if (p->state == RUNNABLE){
+	p->rutime += ticks - p->srtime;
 	p->rtime = ticks;
 	handleSettings(p, isNew);
 	updateStarved(p);
@@ -199,6 +200,7 @@ if (p->state == RUNNABLE){
 }
 void signToPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
+	p->rutime += ticks - p->srtime;
 	p->rtime = ticks;
 	handleSettings(p, isNew);
 	updateStarved(p);
@@ -208,6 +210,7 @@ void signToPQ(struct proc * p , int isNew){
 }
 void signToExtPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
+		p->rutime += ticks - p->srtime;
 		p->rtime = ticks;
 		handleSettings(p, isNew);
 		updateStarved(p);
@@ -232,7 +235,6 @@ struct proc * getRRQProc(){
 		panic("getRRQProc failed!!");
 	}*/
 	struct proc * p = rrq.dequeue();
-	p->retime += ticks - p->rtime;
 	return p;
 
 
@@ -243,7 +245,6 @@ struct proc * getPQProc(){
 		panic("getPQProc failed!!");
 	}*/
 	struct proc * p = pq.extractMin();
-	p->retime += ticks - p->rtime;
 	return p;
 
 
@@ -281,7 +282,6 @@ struct proc * getExtPQProc(){
 
 	}
 	lastProc = nextProc;
-	nextProc->retime += ticks - p->rtime;
 	return nextProc;
 }
 
@@ -667,7 +667,9 @@ scheduler(void){
       // before jumping back to us.
       c->proc = p;
       switchuvm(p);
+			p->retime += ticks - p->rtime;
       p->state = RUNNING;
+			p->srtime = ticks;
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
 			rpholder.remove(p);
@@ -767,6 +769,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+	p->rutime += ticks - p->srtime;
 	p->bedTime = ticks;
 	int beforTick = ticks;
 	sched();
