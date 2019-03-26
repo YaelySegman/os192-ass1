@@ -1,0 +1,2108 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..a9d15ef
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,14 @@
++*.o
++*.d
++*.out
++*.sym
++*.asm
++_*
++xv6.img
++vectors.S
++mkfs
++bootblock
++entryother
++fs.img
++initcode
++kernel
+diff --git a/Makefile b/Makefile
+index 920b6a3..d11b6e5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -33,7 +33,7 @@ OBJS = \
+ # TOOLPREFIX = i386-elf-
+ 
+ # Using native tools (e.g., on X86 Linux)
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -141,7 +141,7 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
+ 	$(OBJDUMP) -t kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > kernel.sym
+ 
+ ass1ds.o:
+-	$(GPP) $(CPPFLAGS) -c ass1ds.cpp -o ass1ds.o
++	$(GPP) -std=gnu++11 $(CPPFLAGS) -c ass1ds.cpp -o ass1ds.o
+ 
+ # kernelmemfs is a copy of kernel that maintains the
+ # disk image in memory instead of writing to a disk.
+@@ -198,13 +198,15 @@ UPROGS=\
+ 	_stressfs\
+ 	_wc\
+ 	_zombie\
+-
+-fs.img: mkfs README $(UPROGS)
+-	./mkfs fs.img README $(UPROGS)
++	_tests\
++	_test\
++	
++fs.img: mkfs README  $(UPROGS)
++	./mkfs fs.img README  $(UPROGS)
+ 
+ -include *.d
+ 
+-clean: 
++clean:
+ 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+ 	*.o *.d *.asm *.sym vectors.S bootblock entryother \
+ 	initcode initcode.out kernel xv6.img fs.img kernelmemfs \
+diff --git a/ass1ds.cpp b/ass1ds.cpp
+index b93fb11..17f54d4 100644
+--- a/ass1ds.cpp
++++ b/ass1ds.cpp
+@@ -2,9 +2,11 @@
+ 
+ extern "C" {
+ 	char*                         kalloc();
++	void                          panic(char*) __attribute__((noreturn));
+ 	void*                         memset(void*, int, uint);
+ 	void                          initSchedDS();
+ 	long long                     getAccumulator(Proc *p);
++	long long                     __moddi3(long long number, long long divisor);
+ 
+ 	//for pq
+ 	static boolean                isEmptyPriorityQueue();
+@@ -212,7 +214,7 @@ static MapNode* allocNode(Proc *p, long long key) {
+ 	if(!ans)
+ 		return null;
+ 
+-	if(!ans->listOfProcs.enqueue(p)){
++	if(!ans->listOfProcs.enqueue(p)) {
+ 		deallocNode(ans);
+ 		return null;
+ 	}
+@@ -305,14 +307,16 @@ bool LinkedList::transfer() {
+ 	if(!priorityQ->isEmpty())
+ 		return false;
+ 	
+-	MapNode *node = allocNode(0);
+-	if(!node)
+-		return false;
+-	
+-	node->listOfProcs.first = first;
+-	node->listOfProcs.last = last;
+-	first = last = null;
+-	priorityQ->root = node;
++	if(!isEmpty()) {
++		MapNode *node = allocNode(0);
++		if(!node)
++			return false;
++		
++		node->listOfProcs.first = first;
++		node->listOfProcs.last = last;
++		first = last = null;
++		priorityQ->root = node;
++	}
+ 	return true;
+ }
+ 
+@@ -459,3 +463,29 @@ bool Map::extractProc(Proc *p) {
+ 	root = tempMap.root;
+ 	return ans;
+ }
++
++long long __moddi3(long long number, long long divisor) { //returns number%divisor
++	if(divisor == 0)
++		panic((char*)"divide by zero!!!\n");
++
++	bool isNumberNegative = false;
++	if(number < 0) {
++		number = -number;
++		isNumberNegative = true;
++	}
++
++	if(divisor < 0)
++		divisor = -divisor;
++
++	for(;;) {
++		long long divisor2 = divisor;
++		while(number >= divisor2) {
++			number -= divisor2;
++			if(divisor2 + divisor2 > 0) //exponential decay.
++				divisor2 += divisor2;
++		}
++
++		if(number < divisor)
++			return isNumberNegative ? -number : number;
++	}
++}
+diff --git a/cat.c b/cat.c
+index 5ddc820..ed1987d 100644
+--- a/cat.c
++++ b/cat.c
+@@ -12,12 +12,12 @@ cat(int fd)
+   while((n = read(fd, buf, sizeof(buf))) > 0) {
+     if (write(1, buf, n) != n) {
+       printf(1, "cat: write error\n");
+-      exit();
++      exit(0);
+     }
+   }
+   if(n < 0){
+     printf(1, "cat: read error\n");
+-    exit();
++    exit(0);
+   }
+ }
+ 
+@@ -28,16 +28,16 @@ main(int argc, char *argv[])
+ 
+   if(argc <= 1){
+     cat(0);
+-    exit();
++    exit(0);
+   }
+ 
+   for(i = 1; i < argc; i++){
+     if((fd = open(argv[i], 0)) < 0){
+       printf(1, "cat: cannot open %s\n", argv[i]);
+-      exit();
++      exit(0);
+     }
+     cat(fd);
+     close(fd);
+   }
+-  exit();
++  exit(0);
+ }
+diff --git a/defs.h b/defs.h
+index 82fb982..a120ec0 100644
+--- a/defs.h
++++ b/defs.h
+@@ -104,7 +104,7 @@ int             pipewrite(struct pipe*, char*, int);
+ //PAGEBREAK: 16
+ // proc.c
+ int             cpuid(void);
+-void            exit(void);
++void            exit(int status);
+ int             fork(void);
+ int             growproc(int);
+ int             kill(int);
+@@ -117,9 +117,12 @@ void            sched(void);
+ void            setproc(struct proc*);
+ void            sleep(void*, struct spinlock*);
+ void            userinit(void);
+-int             wait(void);
++int             wait(int *status);
+ void            wakeup(void*);
+ void            yield(void);
++int             detach(int pid);
++void            policy(int policy);
++void            priority(int priority);
+ 
+ // swtch.S
+ void            swtch(struct context**, struct context*);
+diff --git a/dot-bochsrc b/dot-bochsrc
+index ba13db7..5341b84 100644
+--- a/dot-bochsrc
++++ b/dot-bochsrc
+@@ -9,8 +9,8 @@
+ # There are two choices of configuration interface: a text mode version
+ # called "textconfig" and a graphical version called "wx".  The text
+ # mode version uses stdin/stdout and is always compiled in.  The graphical
+-# version is only available when you use "--with-wx" on the configure 
+-# command.  If you do not write a config_interface line, Bochs will 
++# version is only available when you use "--with-wx" on the configure
++# command.  If you do not write a config_interface line, Bochs will
+ # choose a default for you.
+ #
+ # NOTE: if you use the "wx" configuration interface, you must also use
+@@ -22,14 +22,14 @@
+ #=======================================================================
+ # DISPLAY_LIBRARY
+ #
+-# The display library is the code that displays the Bochs VGA screen.  Bochs 
+-# has a selection of about 10 different display library implementations for 
+-# different platforms.  If you run configure with multiple --with-* options, 
++# The display library is the code that displays the Bochs VGA screen.  Bochs
++# has a selection of about 10 different display library implementations for
++# different platforms.  If you run configure with multiple --with-* options,
+ # the display_library command lets you choose which one you want to run with.
+ # If you do not write a display_library line, Bochs will choose a default for
+ # you.
+ #
+-# The choices are: 
++# The choices are:
+ #   x              use X windows interface, cross platform
+ #   win32          use native win32 libraries
+ #   carbon         use Carbon library (for MacOS X)
+@@ -94,7 +94,7 @@ romimage: file=$BXSHARE/BIOS-bochs-latest
+ #  Measured IPS value will then be logged into your log file or status bar
+ #  (if supported by the gui).
+ #
+-#  IPS is used to calibrate many time-dependent events within the bochs 
++#  IPS is used to calibrate many time-dependent events within the bochs
+ #  simulation.  For example, changing IPS affects the frequency of VGA
+ #  updates, the duration of time before a key starts to autorepeat, and
+ #  the measurement of BogoMips and other benchmarks.
+@@ -111,7 +111,7 @@ cpu: count=2, ips=10000000
+ 
+ #=======================================================================
+ # MEGS
+-# Set the number of Megabytes of physical memory you want to emulate. 
++# Set the number of Megabytes of physical memory you want to emulate.
+ # The default is 32MB, most OS's won't need more than that.
+ # The maximum amount of memory supported is 2048Mb.
+ #=======================================================================
+@@ -124,11 +124,11 @@ megs: 32
+ 
+ #=======================================================================
+ # OPTROMIMAGE[1-4]:
+-# You may now load up to 4 optional ROM images. Be sure to use a 
++# You may now load up to 4 optional ROM images. Be sure to use a
+ # read-only area, typically between C8000 and EFFFF. These optional
+ # ROM images should not overwrite the rombios (located at
+ # F0000-FFFFF) and the videobios (located at C0000-C7FFF).
+-# Those ROM images will be initialized by the bios if they contain 
++# Those ROM images will be initialized by the bios if they contain
+ # the right signature (0x55AA) and a valid checksum.
+ # It can also be a convenient way to upload some arbitrary code/data
+ # in the simulation, that can be retrieved by the boot loader
+@@ -203,10 +203,10 @@ floppyb: 1_44=b.img, status=inserted
+ # ATA controller for hard disks and cdroms
+ #
+ # ata[0-3]: enabled=[0|1], ioaddr1=addr, ioaddr2=addr, irq=number
+-# 
++#
+ # These options enables up to 4 ata channels. For each channel
+ # the two base io addresses and the irq must be specified.
+-# 
++#
+ # ata0 and ata1 are enabled by default with the values shown below
+ #
+ # Examples:
+@@ -224,7 +224,7 @@ ata3: enabled=0, ioaddr1=0x168, ioaddr2=0x360, irq=9
+ # ATA[0-3]-MASTER, ATA[0-3]-SLAVE
+ #
+ # This defines the type and characteristics of all attached ata devices:
+-#   type=       type of attached device [disk|cdrom] 
++#   type=       type of attached device [disk|cdrom]
+ #   mode=       only valid for disks [flat|concat|external|dll|sparse|vmware3]
+ #   mode=       only valid for disks [undoable|growing|volatile]
+ #   path=       path of the image
+@@ -236,16 +236,16 @@ ata3: enabled=0, ioaddr1=0x168, ioaddr2=0x360, irq=9
+ #   translation=type of translation of the bios, only for disks [none|lba|large|rechs|auto]
+ #   model=      string returned by identify device command
+ #   journal=    optional filename of the redolog for undoable and volatile disks
+-#   
++#
+ # Point this at a hard disk image file, cdrom iso file, or physical cdrom
+ # device.  To create a hard disk image, try running bximage.  It will help you
+ # choose the size and then suggest a line that works with it.
+ #
+-# In UNIX it may be possible to use a raw device as a Bochs hard disk, 
++# In UNIX it may be possible to use a raw device as a Bochs hard disk,
+ # but WE DON'T RECOMMEND IT.  In Windows there is no easy way.
+ #
+ # In windows, the drive letter + colon notation should be used for cdroms.
+-# Depending on versions of windows and drivers, you may only be able to 
++# Depending on versions of windows and drivers, you may only be able to
+ # access the "first" cdrom in the system.  On MacOSX, use path="drive"
+ # to access the physical drive.
+ #
+@@ -274,7 +274,7 @@ ata0-slave: type=disk, mode=flat, path="fs.img", cylinders=1024, heads=1, spt=1
+ #ata0-slave: type=cdrom, path=D:, status=inserted
+ #ata0-slave: type=cdrom, path=/dev/cdrom, status=inserted
+ #ata0-slave: type=cdrom, path="drive", status=inserted
+-#ata0-slave: type=cdrom, path=/dev/rcd0d, status=inserted 
++#ata0-slave: type=cdrom, path=/dev/rcd0d, status=inserted
+ 
+ #=======================================================================
+ # BOOT:
+@@ -300,9 +300,9 @@ boot: disk
+ #  TO BE COMPLETED (see Greg explanation in feature request #536329)
+ #
+ #  TIME0:
+-#  Specifies the start (boot) time of the virtual machine. Use a time 
+-#  value as returned by the time(2) system call. If no time0 value is 
+-#  set or if time0 equal to 1 (special case) or if time0 equal 'local', 
++#  Specifies the start (boot) time of the virtual machine. Use a time
++#  value as returned by the time(2) system call. If no time0 value is
++#  set or if time0 equal to 1 (special case) or if time0 equal 'local',
+ #  the simulation will be started at the current local host time.
+ #  If time0 equal to 2 (special case) or if time0 equal 'utc',
+ #  the simulation will be started at the current utc time.
+@@ -318,7 +318,7 @@ boot: disk
+ #   clock: sync=realtime, time0=946681200   # Sat Jan  1 00:00:00 2000
+ #   clock: sync=none,     time0=1           # Now (localtime)
+ #   clock: sync=none,     time0=utc         # Now (utc/gmt)
+-# 
++#
+ # Default value are sync=none, time0=local
+ #=======================================================================
+ #clock: sync=none, time0=local
+@@ -357,7 +357,7 @@ log: bochsout.txt
+ #   %i : 8 hexadecimal digits of cpu current eip (ignored in SMP configuration)
+ #   %e : 1 character event type ('i'nfo, 'd'ebug, 'p'anic, 'e'rror)
+ #   %d : 5 characters string of the device, between brackets
+-# 
++#
+ # Default : %t%e%d
+ # Examples:
+ #   logprefix: %t-%e-@%i-%d
+@@ -369,7 +369,7 @@ log: bochsout.txt
+ # LOG CONTROLS
+ #
+ # Bochs now has four severity levels for event logging.
+-#   panic: cannot proceed.  If you choose to continue after a panic, 
++#   panic: cannot proceed.  If you choose to continue after a panic,
+ #          don't be surprised if you get strange behavior or crashes.
+ #   error: something went wrong, but it is probably safe to continue the
+ #          simulation.
+@@ -383,7 +383,7 @@ log: bochsout.txt
+ #
+ # If you are experiencing many panics, it can be helpful to change
+ # the panic action to report instead of fatal.  However, be aware
+-# that anything executed after a panic is uncharted territory and can 
++# that anything executed after a panic is uncharted territory and can
+ # cause bochs to become unstable.  The panic is a "graceful exit," so
+ # if you disable it you may get a spectacular disaster instead.
+ #=======================================================================
+@@ -514,7 +514,7 @@ keyboard_serial_delay: 250
+ # characters to the keyboard controller. This leaves time for the
+ # guest os to deal with the flow of characters.  The ideal setting
+ # depends on how your operating system processes characters.  The
+-# default of 100000 usec (.1 seconds) was chosen because it works 
++# default of 100000 usec (.1 seconds) was chosen because it works
+ # consistently in Windows.
+ #
+ # If your OS is losing characters during a paste, increase the paste
+@@ -526,7 +526,7 @@ keyboard_serial_delay: 250
+ keyboard_paste_delay: 100000
+ 
+ #=======================================================================
+-# MOUSE: 
++# MOUSE:
+ # This option prevents Bochs from creating mouse "events" unless a mouse
+ # is  enabled. The hardware emulation itself is not disabled by this.
+ # You can turn the mouse on by setting enabled to 1, or turn it off by
+@@ -563,7 +563,7 @@ private_colormap: enabled=0
+ 
+ #=======================================================================
+ # fullscreen: ONLY IMPLEMENTED ON AMIGA
+-#             Request that Bochs occupy the entire screen instead of a 
++#             Request that Bochs occupy the entire screen instead of a
+ #             window.
+ #
+ # Examples:
+@@ -591,11 +591,11 @@ private_colormap: enabled=0
+ # ethdev: The ethdev value is the name of the network interface on your host
+ # platform.  On UNIX machines, you can get the name by running ifconfig.  On
+ # Windows machines, you must run niclist to get the name of the ethdev.
+-# Niclist source code is in misc/niclist.c and it is included in Windows 
++# Niclist source code is in misc/niclist.c and it is included in Windows
+ # binary releases.
+ #
+-# script: The script value is optional, and is the name of a script that 
+-# is executed after bochs initialize the network interface. You can use 
++# script: The script value is optional, and is the name of a script that
++# is executed after bochs initialize the network interface. You can use
+ # this script to configure this network interface, or enable masquerading.
+ # This is mainly useful for the tun/tap devices that only exist during
+ # Bochs execution. The network interface name is supplied to the script
+@@ -625,10 +625,10 @@ private_colormap: enabled=0
+ 
+ #=======================================================================
+ # KEYBOARD_MAPPING:
+-# This enables a remap of a physical localized keyboard to a 
++# This enables a remap of a physical localized keyboard to a
+ # virtualized us keyboard, as the PC architecture expects.
+ # If enabled, the keymap file must be specified.
+-# 
++#
+ # Examples:
+ #   keyboard_mapping: enabled=1, map=gui/keymaps/x11-pc-de.map
+ #=======================================================================
+diff --git a/echo.c b/echo.c
+index 806dee0..eed68a0 100644
+--- a/echo.c
++++ b/echo.c
+@@ -9,5 +9,5 @@ main(int argc, char *argv[])
+ 
+   for(i = 1; i < argc; i++)
+     printf(1, "%s%s", argv[i], i+1 < argc ? " " : "\n");
+-  exit();
++  exit(0);
+ }
+diff --git a/exec.c b/exec.c
+index b40134f..d07ea7a 100644
+--- a/exec.c
++++ b/exec.c
+@@ -23,7 +23,6 @@ exec(char *path, char **argv)
+ 
+   if((ip = namei(path)) == 0){
+     end_op();
+-    cprintf("exec: fail\n");
+     return -1;
+   }
+   ilock(ip);
+diff --git a/fcntl.h b/fcntl.h
+index d565483..d2a6527 100644
+--- a/fcntl.h
++++ b/fcntl.h
+@@ -2,3 +2,5 @@
+ #define O_WRONLY  0x001
+ #define O_RDWR    0x002
+ #define O_CREATE  0x200
++#define S_IROTH   0x004
++#define S_IWOTH   0x002
+diff --git a/file.c b/file.c
+index 24b32c2..25e3a4e 100644
+--- a/file.c
++++ b/file.c
+@@ -154,4 +154,3 @@ filewrite(struct file *f, char *addr, int n)
+   }
+   panic("filewrite");
+ }
+-
+diff --git a/forktest.c b/forktest.c
+index 8bc984d..4cbcb17 100644
+--- a/forktest.c
++++ b/forktest.c
+@@ -25,24 +25,24 @@ forktest(void)
+     if(pid < 0)
+       break;
+     if(pid == 0)
+-      exit();
++      exit(0);
+   }
+ 
+   if(n == N){
+     printf(1, "fork claimed to work N times!\n", N);
+-    exit();
++    exit(0);
+   }
+ 
+   for(; n > 0; n--){
+-    if(wait() < 0){
++    if(wait(0) < 0){
+       printf(1, "wait stopped early\n");
+-      exit();
++      exit(0);
+     }
+   }
+ 
+-  if(wait() != -1){
++  if(wait(0) != -1){
+     printf(1, "wait got too many\n");
+-    exit();
++    exit(0);
+   }
+ 
+   printf(1, "fork test OK\n");
+@@ -52,5 +52,5 @@ int
+ main(void)
+ {
+   forktest();
+-  exit();
++  exit(0);
+ }
+diff --git a/grep.c b/grep.c
+index adc4835..1aa1081 100644
+--- a/grep.c
++++ b/grep.c
+@@ -43,24 +43,24 @@ main(int argc, char *argv[])
+ 
+   if(argc <= 1){
+     printf(2, "usage: grep pattern [file ...]\n");
+-    exit();
++    exit(0);
+   }
+   pattern = argv[1];
+ 
+   if(argc <= 2){
+     grep(pattern, 0);
+-    exit();
++    exit(0);
+   }
+ 
+   for(i = 2; i < argc; i++){
+     if((fd = open(argv[i], 0)) < 0){
+       printf(1, "grep: cannot open %s\n", argv[i]);
+-      exit();
++      exit(0);
+     }
+     grep(pattern, fd);
+     close(fd);
+   }
+-  exit();
++  exit(0);
+ }
+ 
+ // Regexp matcher from Kernighan & Pike,
+diff --git a/init.c b/init.c
+index 046b551..8da3b90 100644
+--- a/init.c
++++ b/init.c
+@@ -24,14 +24,14 @@ main(void)
+     pid = fork();
+     if(pid < 0){
+       printf(1, "init: fork failed\n");
+-      exit();
++      exit(0);
+     }
+     if(pid == 0){
+       exec("sh", argv);
+       printf(1, "init: exec sh failed\n");
+-      exit();
++      exit(0);
+     }
+-    while((wpid=wait()) >= 0 && wpid != pid)
++    while((wpid=wait(0)) >= 0 && wpid != pid)
+       printf(1, "zombie!\n");
+   }
+ }
+diff --git a/initcode.S b/initcode.S
+index 80ac5d8..b8229b8 100644
+--- a/initcode.S
++++ b/initcode.S
+@@ -14,7 +14,7 @@ start:
+   movl $SYS_exec, %eax
+   int $T_SYSCALL
+ 
+-# for(;;) exit();
++# for(;;) exit(0);
+ exit:
+   movl $SYS_exit, %eax
+   int $T_SYSCALL
+diff --git a/kill.c b/kill.c
+index 364f6af..5a2e450 100644
+--- a/kill.c
++++ b/kill.c
+@@ -9,9 +9,9 @@ main(int argc, char **argv)
+ 
+   if(argc < 2){
+     printf(2, "usage: kill pid...\n");
+-    exit();
++    exit(0);
+   }
+   for(i=1; i<argc; i++)
+     kill(atoi(argv[i]));
+-  exit();
++  exit(0);
+ }
+diff --git a/ln.c b/ln.c
+index cf8a64e..14acdc8 100644
+--- a/ln.c
++++ b/ln.c
+@@ -7,9 +7,9 @@ main(int argc, char *argv[])
+ {
+   if(argc != 3){
+     printf(2, "Usage: ln old new\n");
+-    exit();
++    exit(0);
+   }
+   if(link(argv[1], argv[2]) < 0)
+     printf(2, "link %s %s: failed\n", argv[1], argv[2]);
+-  exit();
++  exit(0);
+ }
+diff --git a/ls.c b/ls.c
+index 2862913..27742c2 100644
+--- a/ls.c
++++ b/ls.c
+@@ -77,9 +77,9 @@ main(int argc, char *argv[])
+ 
+   if(argc < 2){
+     ls(".");
+-    exit();
++    exit(0);
+   }
+   for(i=1; i<argc; i++)
+     ls(argv[i]);
+-  exit();
++  exit(0);
+ }
+diff --git a/main.c b/main.c
+index 6c9e227..588b282 100644
+--- a/main.c
++++ b/main.c
+@@ -33,7 +33,7 @@ main(void)
+   tvinit();        // trap vectors
+   binit();         // buffer cache
+   fileinit();      // file table
+-  ideinit();       // disk 
++  ideinit();       // disk
+   startothers();   // start other processors
+   kinit2(P2V(4*1024*1024), P2V(PHYSTOP)); // must come after startothers()
+   initSchedDS(); // initialize the data structures for the processes sceduling policies
+@@ -134,4 +134,3 @@ pde_t entrypgdir[NPDENTRIES] = {
+ // Blank page.
+ //PAGEBREAK!
+ // Blank page.
+-
+diff --git a/mkdir.c b/mkdir.c
+index 6e4c954..d101838 100644
+--- a/mkdir.c
++++ b/mkdir.c
+@@ -9,7 +9,7 @@ main(int argc, char *argv[])
+ 
+   if(argc < 2){
+     printf(2, "Usage: mkdir files...\n");
+-    exit();
++    exit(0);
+   }
+ 
+   for(i = 1; i < argc; i++){
+@@ -19,5 +19,5 @@ main(int argc, char *argv[])
+     }
+   }
+ 
+-  exit();
++  exit(0);
+ }
+diff --git a/proc.c b/proc.c
+index e68bf1c..ece7d38 100644
+--- a/proc.c
++++ b/proc.c
+@@ -13,22 +13,33 @@ extern RoundRobinQueue rrq;
+ extern RunningProcessesHolder rpholder;
+ 
+ long long getAccumulator(struct proc *p) {
++	return p->accumulator;
+ 	//Implement this function, remove the panic line.
+-	panic("getAccumulator: not implemented\n");
++	//panic("getAccumulator: not implemented\n");
+ }
+-
++enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
++enum policy pol = ROUND_ROBIN;
++int min_priority = 1;
++int max_priority = 10;
++int time_quantum_counter = 0;
++#define DEFAULT_PRIORITY 5
++#define NEW_PROCESS 1 	//true
++#define OLD_PROCESS 0		//false
+ struct {
+   struct spinlock lock;
+   struct proc proc[NPROC];
+ } ptable;
+ 
+ static struct proc *initproc;
++static struct proc *lastProc = 0;
+ 
+ int nextpid = 1;
+ extern void forkret(void);
+ extern void trapret(void);
+ 
+ static void wakeup1(void *chan);
++static void sign_to_q(struct proc *p, int isNew);
++
+ 
+ void
+ pinit(void)
+@@ -48,10 +59,10 @@ struct cpu*
+ mycpu(void)
+ {
+   int apicid, i;
+-  
++
+   if(readeflags()&FL_IF)
+     panic("mycpu called with interrupts enabled\n");
+-  
++
+   apicid = lapicid();
+   // APIC IDs are not guaranteed to be contiguous. Maybe we should have
+   // a reverse map, or reserve a register to store &cpus[i].
+@@ -122,6 +133,7 @@ found:
+   memset(p->context, 0, sizeof *p->context);
+   p->context->eip = (uint)forkret;
+ 
++
+   return p;
+ }
+ 
+@@ -134,7 +146,7 @@ userinit(void)
+   extern char _binary_initcode_start[], _binary_initcode_size[];
+ 
+   p = allocproc();
+-  
++
+   initproc = p;
+   if((p->pgdir = setupkvm()) == 0)
+     panic("userinit: out of memory?");
+@@ -159,6 +171,7 @@ userinit(void)
+   acquire(&ptable.lock);
+ 
+   p->state = RUNNABLE;
++	sign_to_q(p, NEW_PROCESS);
+ 
+   release(&ptable.lock);
+ }
+@@ -226,6 +239,8 @@ fork(void)
+ 
+   np->state = RUNNABLE;
+ 
++	sign_to_q(np,NEW_PROCESS);
++
+   release(&ptable.lock);
+ 
+   return pid;
+@@ -233,9 +248,9 @@ fork(void)
+ 
+ // Exit the current process.  Does not return.
+ // An exited process remains in the zombie state
+-// until its parent calls wait() to find out it exited.
++// until its parent calls wait(0) to find out it exited.
+ void
+-exit(void)
++exit(int status)
+ {
+   struct proc *curproc = myproc();
+   struct proc *p;
+@@ -258,8 +273,8 @@ exit(void)
+   curproc->cwd = 0;
+ 
+   acquire(&ptable.lock);
+-
+-  // Parent might be sleeping in wait().
++	curproc->exit_status = status;
++  // Parent might be sleeping in wait(0).
+   wakeup1(curproc->parent);
+ 
+   // Pass abandoned children to init.
+@@ -273,19 +288,19 @@ exit(void)
+ 
+   // Jump into the scheduler, never to return.
+   curproc->state = ZOMBIE;
+-  sched();
++	sched();
+   panic("zombie exit");
+ }
+ 
+ // Wait for a child process to exit and return its pid.
+ // Return -1 if this process has no children.
+ int
+-wait(void)
++wait(int * status)
+ {
+-  struct proc *p;
++	struct proc *p;
+   int havekids, pid;
+   struct proc *curproc = myproc();
+-  
++
+   acquire(&ptable.lock);
+   for(;;){
+     // Scan through table looking for exited children.
+@@ -305,6 +320,11 @@ wait(void)
+         p->name[0] = 0;
+         p->killed = 0;
+         p->state = UNUSED;
++				// discard the status if it's null
++				if(p->exit_status != null){
++					*status = p->exit_status;
++
++				}
+         release(&ptable.lock);
+         return pid;
+       }
+@@ -318,9 +338,198 @@ wait(void)
+ 
+     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
++
+   }
+ }
+ 
++// Detach : detach the process with pid from current paret to init
++int detach(int pid){
++	struct proc *p;
++	struct proc *curproc = myproc();
++	acquire(&ptable.lock);
++	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
++		if (pid!= p->pid || curproc!= p->parent)
++			continue;
++
++		p->parent = 0;
++		release(&ptable.lock);
++		return 0;
++
++	}
++	release(&ptable.lock);
++	cprintf("Detach failed, no child proccess with pid %d \n", pid);
++	return -1;
++}
++void priority(int priority){
++
++	if(priority >= min_priority && priority <= max_priority){
++		acquire(&ptable.lock);
++	 	myproc()->priority = priority;
++		release(&ptable.lock);
++ 	}
++ 	else panic("Priorety is not in allowed range");
++
++}
++
++void updateMinAccumulator(struct proc* p){
++
++	long long acc_pq, acc_rq;
++
++    int pqSuccess = pq.getMinAccumulator(&acc_pq);
++    int rqSuccess = rpholder.getMinAccumulator(&acc_rq);
++
++    if (pqSuccess == 1 && rqSuccess == 1) {
++        p->accumulator = acc_pq < acc_rq ? acc_pq : acc_rq;
++    } else if (pqSuccess == 1) {
++        p->accumulator = acc_pq;
++		}
++    // } else if (rqSuccess == 1) {
++    //     p->accumulator = acc_rq;
++    // }
++		else {
++			p->accumulator = 0;
++		}
++}
++
++void sign_to_q(struct proc *p,int isNew){
++
++
++	if(!isNew){
++		if(pol != ROUND_ROBIN){
++			p->accumulator = p->accumulator + p->priority;
++		}
++	}
++	else{
++		p->priority = DEFAULT_PRIORITY;
++		if(pol != ROUND_ROBIN){
++			updateMinAccumulator(p);
++		}
++
++	}
++
++	if(p->state == RUNNABLE){
++	switch (pol){
++	case ROUND_ROBIN:
++		rrq.enqueue(p);
++	break;
++	case PRIORITY:
++		pq.put(p);
++	break;
++	case E_PRIORITY:
++		pq.put(p);
++		break;
++	default:
++		rrq.enqueue(p);
++	}
++}
++}
++
++void policy(int policy) {
++	//cprintf("old:%d new: %d", pol,policy);
++	 struct proc *pr;
++	int oldPolicy = pol;
++  pol = policy;
++	acquire(&ptable.lock);
++	switch (oldPolicy) {
++		case ROUND_ROBIN:
++			switch (pol){
++			case ROUND_ROBIN:
++				//cprintf("ROUND_ROBIN");
++				break;
++			case PRIORITY:
++				//cprintf("THIS IS PRIORITY");
++				if(!rrq.switchToPriorityQueuePolicy())
++					cprintf("RRQ is empty");
++			break;
++			case E_PRIORITY:
++			//	cprintf("E_PRIORITY");
++				if(!rrq.switchToPriorityQueuePolicy())
++					cprintf("RRQ is empty");
++				min_priority = 0;
++				//TODO
++			break;
++		}break;
++		case PRIORITY:
++			switch (pol){
++			case ROUND_ROBIN:
++	//			cprintf("ROUND_ROBIN");
++			for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
++				pr->accumulator = 0;
++			}
++				pq.switchToRoundRobinPolicy();
++			break;
++			case PRIORITY:
++	//		cprintf("THIS IS PRIORITY");
++			break;
++			case E_PRIORITY:
++	//		cprintf("E_PRIORITY");
++				min_priority = 0;
++			break;
++			}
++		break;
++		case E_PRIORITY:
++			switch (pol){
++				case ROUND_ROBIN:
++					//cprintf("ROUND_ROBIN");
++					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
++						pr->accumulator = 0;
++					}
++					pq.switchToRoundRobinPolicy();
++					min_priority = 1;
++				break;
++				case PRIORITY:
++			//		cprintf("THIS IS PRIORITY");
++					for (pr = ptable.proc; pr < &ptable.proc[NPROC]; pr++) {
++			    	pr->priority = pr->priority == 0 ? 1 : pr->priority;
++			    }
++					min_priority = 1;
++				break;
++				case E_PRIORITY:
++	//				cprintf("E_PRIORITY");
++				break;
++			}
++		break;
++	}
++	 release(&ptable.lock);
++}
++
++struct proc* getProc() {
++	struct proc * p;
++	switch (pol){
++	case ROUND_ROBIN:
++		if(!rrq.isEmpty()){
++			return rrq.dequeue();
++		}
++	break;
++	case PRIORITY:
++		if(!pq.isEmpty()){
++			return pq.extractMin();
++		}
++	break;
++	case E_PRIORITY:
++		if(!pq.isEmpty()){
++			p = pq.extractMin();
++			if(lastProc == p){
++				if(time_quantum_counter % 100 == 0){
++					struct proc * otherProc = pq.extractMin();
++					pq.put(p);
++					return otherProc;
++				}
++				else{
++					time_quantum_counter++;
++					return p;
++				}
++			}
++			else{
++				time_quantum_counter = 0;
++				return p;
++			}
++		}
++	break;
++	}
++		return null;
++}
++
+ //PAGEBREAK: 42
+ // Per-CPU process scheduler.
+ // Each CPU calls scheduler() after setting itself up.
+@@ -329,13 +538,13 @@ wait(void)
+ //  - swtch to start running that process
+ //  - eventually that process transfers control
+ //      via swtch back to the scheduler.
++//ORIGINAL SKEDULAR
+ void
+-scheduler(void)
+-{
++a_scheduler(void){
+   struct proc *p;
+   struct cpu *c = mycpu();
+   c->proc = 0;
+-  
++
+   for(;;){
+     // Enable interrupts on this processor.
+     sti();
+@@ -349,10 +558,12 @@ scheduler(void)
+       // Switch to chosen process.  It is the process's job
+       // to release ptable.lock and then reacquire it
+       // before jumping back to us.
+-      c->proc = p;
++			rrq.enqueue(p);
++      c->proc = getProc();
++
+       switchuvm(p);
+       p->state = RUNNING;
+-
++			rpholder.add(p);
+       swtch(&(c->scheduler), p->context);
+       switchkvm();
+ 
+@@ -364,7 +575,53 @@ scheduler(void)
+ 
+   }
+ }
++//PAGEBREAK: 42
++// Per-CPU process scheduler.
++// Each CPU calls scheduler() after setting itself up.
++// Scheduler never returns.  It loops, doing:
++//  - choose a process to run
++//  - swtch to start running that process
++//  - eventually that process transfers control
++//      via swtch back to the scheduler.
++void
++scheduler(void){
++  struct proc *p=0;
++  struct cpu *c = mycpu();
++  c->proc = 0;
++
++  for(;;){
++
++    // Enable interrupts on this processor.
++    sti();
++
++    // Loop over process table looking for process to run.
++    acquire(&ptable.lock);
++		p = getProc();
++		lastProc = p;
++    if(p != 0 && p->state == RUNNABLE) {
++
++      // Switch to chosen process.  It is the process's job
++      // to release ptable.lock and then reacquire it
++      // before jumping back to us.
+ 
++      c->proc = p;
++
++      switchuvm(p);
++      p->state = RUNNING;
++			rpholder.add(p);
++      swtch(&(c->scheduler), p->context);
++      switchkvm();
++			c->proc = 0;
++			rpholder.remove(p);
++			sign_to_q(p,OLD_PROCESS);
++      // Process is done running for now.
++      // It should have changed its p->state before coming back.
++
++    }
++    release(&ptable.lock);
++
++  }
++}
+ // Enter scheduler.  Must hold only ptable.lock
+ // and have changed proc->state. Saves and restores
+ // intena because intena is a property of this
+@@ -396,7 +653,8 @@ void
+ yield(void)
+ {
+   acquire(&ptable.lock);  //DOC: yieldlock
+-  myproc()->state = RUNNABLE;
++	struct proc * p = myproc();
++  p->state = RUNNABLE;
+   sched();
+   release(&ptable.lock);
+ }
+@@ -428,7 +686,7 @@ void
+ sleep(void *chan, struct spinlock *lk)
+ {
+   struct proc *p = myproc();
+-  
++
+   if(p == 0)
+     panic("sleep");
+ 
+@@ -448,8 +706,7 @@ sleep(void *chan, struct spinlock *lk)
+   // Go to sleep.
+   p->chan = chan;
+   p->state = SLEEPING;
+-
+-  sched();
++	sched();
+ 
+   // Tidy up.
+   p->chan = 0;
+@@ -470,8 +727,10 @@ wakeup1(void *chan)
+   struct proc *p;
+ 
+   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+-    if(p->state == SLEEPING && p->chan == chan)
++    if(p->state == SLEEPING && p->chan == chan){
+       p->state = RUNNABLE;
++			sign_to_q(p,OLD_PROCESS);
++		}
+ }
+ 
+ // Wake up all processes sleeping on chan.
+@@ -496,8 +755,11 @@ kill(int pid)
+     if(p->pid == pid){
+       p->killed = 1;
+       // Wake process from sleep if necessary.
+-      if(p->state == SLEEPING)
++      if(p->state == SLEEPING){
+         p->state = RUNNABLE;
++				updateMinAccumulator(p);
++
++			}
+       release(&ptable.lock);
+       return 0;
+     }
+diff --git a/proc.h b/proc.h
+index 6ad690e..6b5a591 100644
+--- a/proc.h
++++ b/proc.h
+@@ -49,8 +49,11 @@ struct proc {
+   void *chan;                    // If non-zero, sleeping on chan
+   int killed;                    // If non-zero, have been killed
+   struct file *ofile[NOFILE];    // Open files
+-  struct inode *cwd;             // Current directory  
++  struct inode *cwd;             // Current directory
+   char name[16];                 // Process name (debugging)
++  int exit_status;               // procs exit code assigned to exit call
++  long long accumulator;         //accumulator of priority
++  int priority ;                 //process priority
+ };
+ 
+ // Process memory is laid out contiguously, low addresses first:
+diff --git a/rm.c b/rm.c
+index 4fd33c8..83c5f36 100644
+--- a/rm.c
++++ b/rm.c
+@@ -9,7 +9,7 @@ main(int argc, char *argv[])
+ 
+   if(argc < 2){
+     printf(2, "Usage: rm files...\n");
+-    exit();
++    exit(0);
+   }
+ 
+   for(i = 1; i < argc; i++){
+@@ -19,5 +19,5 @@ main(int argc, char *argv[])
+     }
+   }
+ 
+-  exit();
++  exit(0);
+ }
+diff --git a/sh.c b/sh.c
+index 054bab9..c2ef7aa 100644
+--- a/sh.c
++++ b/sh.c
+@@ -3,6 +3,7 @@
+ #include "types.h"
+ #include "user.h"
+ #include "fcntl.h"
++#include "stat.h"
+ 
+ // Parsed command representation
+ #define EXEC  1
+@@ -63,9 +64,16 @@ runcmd(struct cmd *cmd)
+   struct listcmd *lcmd;
+   struct pipecmd *pcmd;
+   struct redircmd *rcmd;
++  int fd;
++  char c[1];
++  char s[512];
++  int stringLocation = 0;
++  char * myCmd;
++  int cmdName = 0;
++
+ 
+   if(cmd == 0)
+-    exit();
++    exit(0);
+ 
+   switch(cmd->type){
+   default:
+@@ -74,17 +82,48 @@ runcmd(struct cmd *cmd)
+   case EXEC:
+     ecmd = (struct execcmd*)cmd;
+     if(ecmd->argv[0] == 0)
+-      exit();
++    exit(0);
++    //Try to exec original command
+     exec(ecmd->argv[0], ecmd->argv);
++    printf(2,"returned from exec\n" );
++    //Returned from exec -> Couldn't find cmd in current dir -> try to find with path file
++    fd = open("/path",O_RDONLY);
++    myCmd = ecmd->argv[0];
++    if (myCmd[0] != '/'){
++      while (read(fd,c,1) != 0){
++        if (c[0]!=':'){
++          s[stringLocation] = c[0];
++          stringLocation++;
++        }
++        else{
++          while(myCmd[cmdName] != 0){
++            s[stringLocation] = myCmd[cmdName];
++            stringLocation++;
++            cmdName++;
++          }
++          s[stringLocation] = 0;
++          stringLocation = 0;
++          cmdName = 0;
++          // DEBUG, DELETE LATER:printf(2,"cmd is:%s\n",s);
++          exec(s, ecmd->argv);
++
++          }
++        }
++        printf(2, "exec %s failed\n", ecmd->argv[0]);
++  }
++  else{
+     printf(2, "exec %s failed\n", ecmd->argv[0]);
++  }
++  close(fd);
+     break;
+ 
++
+   case REDIR:
+     rcmd = (struct redircmd*)cmd;
+     close(rcmd->fd);
+     if(open(rcmd->file, rcmd->mode) < 0){
+       printf(2, "open %s failed\n", rcmd->file);
+-      exit();
++      exit(0);
+     }
+     runcmd(rcmd->cmd);
+     break;
+@@ -93,7 +132,7 @@ runcmd(struct cmd *cmd)
+     lcmd = (struct listcmd*)cmd;
+     if(fork1() == 0)
+       runcmd(lcmd->left);
+-    wait();
++    wait(0);
+     runcmd(lcmd->right);
+     break;
+ 
+@@ -117,8 +156,8 @@ runcmd(struct cmd *cmd)
+     }
+     close(p[0]);
+     close(p[1]);
+-    wait();
+-    wait();
++    wait(0);
++    wait(0);
+     break;
+ 
+   case BACK:
+@@ -127,7 +166,7 @@ runcmd(struct cmd *cmd)
+       runcmd(bcmd->cmd);
+     break;
+   }
+-  exit();
++  exit(0);
+ }
+ 
+ int
+@@ -144,8 +183,12 @@ getcmd(char *buf, int nbuf)
+ int
+ main(void)
+ {
++//TODO:delete LATER
++
++
+   static char buf[100];
+   int fd;
++  int fdpath;
+ 
+   // Ensure that three file descriptors are open.
+   while((fd = open("console", O_RDWR)) >= 0){
+@@ -155,6 +198,28 @@ main(void)
+     }
+   }
+ 
++
++  //check if path file exists ' create it if not.'
++  int init_path_size=2;
++  char *  init_path= "/:";
++  if(open("path",O_RDONLY ) < 0 ){
++    if((fdpath = open("path", O_CREATE| O_RDWR ))>=0 ){
++      if(write(fdpath,init_path,init_path_size)!=init_path_size){
++        panic("could not write to file");
++      }
++
++    }
++    else {
++      panic("could not create file path");
++    }
++
++  }
++  else{
++    printf(2,"file path exists\n", 18);
++  }
++
++
++
+   // Read and run input commands.
+   while(getcmd(buf, sizeof(buf)) >= 0){
+     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+@@ -166,16 +231,16 @@ main(void)
+     }
+     if(fork1() == 0)
+       runcmd(parsecmd(buf));
+-    wait();
++    wait(0);
+   }
+-  exit();
++  exit(0);
+ }
+ 
+ void
+ panic(char *s)
+ {
+   printf(2, "%s\n", s);
+-  exit();
++  exit(0);
+ }
+ 
+ int
+diff --git a/stressfs.c b/stressfs.c
+index c0a4743..06a07ca 100644
+--- a/stressfs.c
++++ b/stressfs.c
+@@ -43,7 +43,7 @@ main(int argc, char *argv[])
+     read(fd, data, sizeof(data));
+   close(fd);
+ 
+-  wait();
++  wait(0);
+ 
+-  exit();
++  exit(0);
+ }
+diff --git a/syscall.c b/syscall.c
+index ee85261..30b4ead 100644
+--- a/syscall.c
++++ b/syscall.c
+@@ -25,6 +25,17 @@ fetchint(uint addr, int *ip)
+   return 0;
+ }
+ 
++// Fetch the int ptr at addr from the current process.
++// int
++// fetchintptr(uint addr, int **ip)
++// {
++//   struct proc *curproc = myproc();
++//
++//   if(addr >= curproc->sz || addr+4 > curproc->sz)
++//     return -1;
++//   *ip = addr;
++//   return 0;
++// }
+ // Fetch the nul-terminated string at addr from the current process.
+ // Doesn't actually copy the string - just sets *pp to point at it.
+ // Returns length of string, not including nul.
+@@ -52,6 +63,7 @@ argint(int n, int *ip)
+   return fetchint((myproc()->tf->esp) + 4 + 4*n, ip);
+ }
+ 
++
+ // Fetch the nth word-sized system call argument as a pointer
+ // to a block of memory of size bytes.  Check that the pointer
+ // lies within the process address space.
+@@ -60,7 +72,7 @@ argptr(int n, char **pp, int size)
+ {
+   int i;
+   struct proc *curproc = myproc();
+- 
++
+   if(argint(n, &i) < 0)
+     return -1;
+   if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
+@@ -103,6 +115,9 @@ extern int sys_unlink(void);
+ extern int sys_wait(void);
+ extern int sys_write(void);
+ extern int sys_uptime(void);
++extern int sys_detach(void);
++extern int sys_policy(void);
++extern int sys_priority(void);
+ 
+ static int (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+@@ -126,6 +141,10 @@ static int (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_detach]  sys_detach,
++[SYS_policy]  sys_policy,
++[SYS_priority] sys_priority,
++
+ };
+ 
+ void
+diff --git a/syscall.h b/syscall.h
+index bc5f356..a302c63 100644
+--- a/syscall.h
++++ b/syscall.h
+@@ -20,3 +20,6 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_detach 22
++#define SYS_policy 23
++#define SYS_priority 24
+diff --git a/sysproc.c b/sysproc.c
+index 0686d29..f4934b7 100644
+--- a/sysproc.c
++++ b/sysproc.c
+@@ -16,14 +16,22 @@ sys_fork(void)
+ int
+ sys_exit(void)
+ {
+-  exit();
++  int status;
++
++  if(argint(0,&status)<0)
++    return -1;
++  exit(status);
+   return 0;  // not reached
+ }
+ 
+ int
+ sys_wait(void)
+ {
+-  return wait();
++  int * status;
++  if(argint(0,(int *)(&status))<0)
++    return -1;
++
++  return wait(status);
+ }
+ 
+ int
+@@ -36,6 +44,39 @@ sys_kill(void)
+   return kill(pid);
+ }
+ 
++int
++sys_detach(void)
++{
++  int pid;
++  if(argint(0, &pid) < 0)
++    return -1;
++  return detach(pid);
++}
++
++int
++sys_policy(void)
++{
++  int poli;
++  if(argint(0, &poli)<0){
++    return -1;
++  }
++  if(poli != 1 && poli != 2 && poli != 3)
++    return -1;
++  poli--;
++  policy(poli);
++  return 0;
++}
++int
++sys_priority(void)
++{
++  int priority;
++  if(argint(0, &priority)<0){
++    return -1;
++  }
++  policy(priority);
++  return 0;
++}
++
+ int
+ sys_getpid(void)
+ {
+diff --git a/test.c b/test.c
+new file mode 100644
+index 0000000..d4df3dc
+--- /dev/null
++++ b/test.c
+@@ -0,0 +1,290 @@
++//
++// Created by nadav on 3/13/19.
++//
++#include "types.h"
++#include "user.h"
++#include "fcntl.h"
++
++#define ROUND_ROBIN 1
++#define PRIORITY 2
++#define EXTENED_PRIORITY 3
++
++struct perf {
++    int ctime;                     // Creation time
++    int ttime;                     // Termination time
++    int stime;                     // The total time spent in the SLEEPING state
++    int retime;                    // The total time spent in the RUNNABLE state
++    int rutime;                    // The total time spent in the RUNNING state
++};
++
++
++typedef boolean (test_runner)();
++
++void run_test(test_runner *test, char *name) {
++    printf(1, "========== Test - %s: Begin ==========\n", name);
++    boolean result = (*test)();
++    if (result) {
++        printf(1, "========== Test - %s: Passed ==========\n", name);
++    } else {
++        printf(1, "========== Test - %s: Failed ==========\n", name);
++    }
++}
++
++boolean assert_equals(int expected, int actual, char *msg) {
++    if (expected != actual) {
++        printf(2, "Assert %s failed: expected %d but got %d\n", msg, expected, actual);
++        return false;
++    } else return true;
++}
++
++
++void print_perf(struct perf *performance) {
++    printf(1, "pref:\n");
++    printf(1, "\tctime: %d\n", performance->ctime);
++    printf(1, "\tttime: %d\n", performance->ttime);
++    printf(1, "\tstime: %d\n", performance->stime);
++    printf(1, "\tretime: %d\n", performance->retime);
++    printf(1, "\trutime: %d\n", performance->rutime);
++    printf(1, "\n\tTurnaround time: %d\n", (performance->ttime - performance->ctime));
++}
++
++int fact(int n) {
++    if (!n)
++        return 0;
++    return n * fact(n - 1);
++}
++
++unsigned long long fact2(unsigned long long n, unsigned long long k) {
++    start:
++    if (n == 1) {
++        return k;
++    } else {
++        --n;
++        k = k * n;
++        goto start;
++    }
++
++
++}
++
++int fib(int n) {
++    if (!n)
++        return 1;
++    return fib(n - 1) + fib(n - 2);
++}
++
++
++boolean test_exit_wait() {
++    int status;
++    boolean result = true;
++    int pid;
++    for (int i = 0; i < 20; ++i) {
++        pid = fork();
++        if (pid > 0) {
++            wait(&status);
++            result = result && assert_equals(i, status, "exit&wait");
++            status = -1;
++        } else {
++            sleep(3);
++            exit(i);
++        }
++    }
++    return result;
++}
++
++boolean test_detach() {
++    int status1;
++    int status2;
++    int status3;
++    int pid;
++    boolean result1;
++    boolean result2;
++    boolean result3;
++
++    pid = fork();
++    if (pid > 0) {
++        status1 = detach(pid);
++        result1 = assert_equals(0, status1, "detach - status1");
++
++        status2 = detach(pid);
++        result2 = assert_equals(-1, status2, "detach - status2");
++
++        status3 = detach(-10);
++        result3 = assert_equals(-1, status3, "detach - status3");
++
++        return result1 && result2 && result3;
++    } else {
++        sleep(100);
++        exit(0);
++    }
++}
++
++boolean test_policy_helper(int *priority_mod, int policy) {
++    int nProcs = 100;
++    int pid, status;
++    boolean result = true;
++    for (int i = 0; i < nProcs; ++i) {
++        pid = fork();
++        if (pid < 0) {
++            break;
++        } else if (pid == 0) {
++            if (priority_mod) {
++                if ((i % *(priority_mod)) == 0 && policy == PRIORITY) {
++                    priority(1);
++                } else {
++                    priority(i % (*priority_mod));
++                }
++            }
++            sleep(10);
++            exit(0);
++        }
++    }
++    for (int j = 0; j < nProcs; ++j) {
++        wait(&status);
++        result = result && assert_equals(0, status, "round robin");
++    }
++    return result;
++
++}
++
++boolean test_round_robin_policy() {
++    return test_policy_helper(null, null);
++
++}
++
++boolean test_priority_policy() {
++    int priority_mod = 10;
++    policy(PRIORITY);
++    boolean result = test_policy_helper(&priority_mod, PRIORITY);
++    policy(ROUND_ROBIN);
++    return result;
++}
++
++boolean test_extended_priority_policy() {
++    int priority_mod = 10;
++    policy(EXTENED_PRIORITY);
++    boolean result = test_policy_helper(&priority_mod, EXTENED_PRIORITY);
++    policy(ROUND_ROBIN);
++    return result;
++}
++
++// boolean test_performance_helper(int *npriority) {
++//     int pid1;
++//     struct perf perf2;
++//     pid1 = fork();
++//     if (pid1 > 0) {
++// //        int status1;
++//     //    wait_stat(&status1, &perf2);
++//         print_perf(&perf2);
++//     } else {
++//         for (int a = 0; a < 100; ++a) {
++//             int pid;
++//             struct perf perf1;
++//
++//             pid = fork();
++//             // the child pid is pid
++//             if (pid > 0) {
++//                 int status;
++//                 sleep(5);
++//           //      wait_stat(&status, &perf1);
++//             } else {
++//                 if (npriority)
++//                     priority(*npriority);
++//                 int sum = 0;
++//                 for (int i = 0; i < 100000000; ++i) {
++//                     for (int j = 0; j < 100000000; ++j) {
++//                         ++sum;
++//                     }
++//                 }
++//                 sleep(5);
++//                 exit(0);
++//             }
++//         }
++//         exit(0);
++//     }
++//     return true;
++// }
++
++
++boolean test_starvation_helper(int npolicy, int npriority) {
++    boolean result = true;
++    policy(npolicy);
++    int nProcs = 10;
++    int pid_arr[nProcs];
++    int pid;
++    memset(&pid_arr, 0, nProcs * sizeof(int));
++    for (int i = 0; i < nProcs; ++i) {
++        pid = fork();
++        if (pid < 0) {
++            break;
++        } else if (pid == 0) {
++            sleep(5);
++            priority(npriority);
++            for (;;) {};
++        } else {
++            pid_arr[i] = pid;
++        }
++    }
++    sleep(100);
++    for (int j = 0; j < nProcs; ++j) {
++        if (pid_arr[j] != 0) {
++            result = result && assert_equals(0, kill(pid_arr[j]), "failed to kill child (yes it does sound horrible)");
++            wait(null);
++        }
++    }
++    policy(ROUND_ROBIN);
++    return result;
++}
++
++/**
++ * test the growth of accumulator
++ */
++boolean test_accumulator() {
++    return test_starvation_helper(PRIORITY, 2);
++}
++
++/** I hope this does test the case of
++   starvation in extended priority
++   (where the priority is 0)
++*/
++boolean test_starvation() {
++    return test_starvation_helper(EXTENED_PRIORITY, 0);
++}
++
++
++// boolean test_performance_round_robin() {
++//     return test_performance_helper(null);
++// }
++//
++// boolean test_performance_priority() {
++//     policy(PRIORITY);
++//     int npriority = 2;
++//     boolean result = test_performance_helper(&npriority);
++//     policy(ROUND_ROBIN);
++//     return result;
++//
++// }
++//
++// boolean test_performance_extended_priority() {
++//     policy(EXTENED_PRIORITY);
++//     int npriority = 0;
++//     boolean result = test_performance_helper(&npriority);
++//     policy(ROUND_ROBIN);
++//     return result;
++//
++// }
++
++
++int main(void) {
++    run_test(&test_exit_wait, "exit&wait");
++    run_test(&test_detach, "detach");
++    run_test(&test_round_robin_policy, "round robin policy");
++    run_test(&test_priority_policy, "priority policy");
++    //run_test(&test_extended_priority_policy, "extended priority policy");
++  //  run_test(&test_accumulator, "accumulator");
++    run_test(&test_starvation, "starvation");
++  //  run_test(&test_performance_round_robin, "performance round robin");
++  //  run_test(&test_performance_priority, "performance priority");
++  //  run_test(&test_performance_extended_priority, "performance extended priority");
++    exit(0);
++}
+diff --git a/tests.c b/tests.c
+new file mode 100644
+index 0000000..5d235ae
+--- /dev/null
++++ b/tests.c
+@@ -0,0 +1,177 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++
++
++
++int success=0, fail=0,ans=-2;
++
++void test_exit_wait_success(){
++
++    int pid = fork();
++    if(pid!=0){
++      wait(&ans);
++    }
++    else {
++      exit(1);}
++}
++void test_exit_wait_fail(){
++
++  int pid = fork();
++  if(pid>0){
++    wait(&ans);
++  }
++  else exit(-1);
++}
++void test_detach_success(){
++  int pid;
++  pid = fork();
++  if(pid > 0) {
++   ans = detach(pid);
++
++} else
++  {
++    sleep(10);
++    exit(0);
++  }
++}
++
++void test_detach_fail(){
++  int pid;
++  pid = fork();
++  if(pid > 0) {
++    wait(0);
++   ans = detach(pid+9); // status = -1
++
++  }
++  else
++  {
++    exit(0);
++  }
++
++}
++
++void test_detach_wrong_parent(){
++  int pid;
++  pid = fork();
++  if(pid == 0) {
++      ans = detach(pid); // status = -1
++      exit(0);
++  }
++  else wait(0);
++}
++
++void round_robin_sanity(){
++  int pid,pid2;
++  pid = fork();
++  if(pid>0){
++    pid2=fork();
++    if(pid2==0){
++      int i;sleep(3);
++      for(i=0;i<3;i++){
++
++        write(2,"Going to sleep son 2\n",21);
++        sleep(1);
++        write(2,"woke up son 2\n",16);
++      }
++      write(2,"son 2 exiting\n",16);
++      sleep(1);
++        exit(0);
++    }
++    else {  wait(0);wait(0);}
++  }
++  else{
++    int i;
++    for(i=0;i<3;i++){
++      write(2,"Going to sleep son 1\n",21);
++      sleep(3);
++      write(2,"woke up son 1\n",16);
++    }
++    write(2,"son 1 exiting\n",16);
++    exit(0);
++  }
++}
++void test_3sons(int pol){
++  policy(pol);
++  int pid,pid2,pid3;
++  pid = fork();
++  if(pid>0){
++    sleep(1);
++    pid2=fork();
++    if(pid2>0){
++      sleep(1);
++      pid3=fork();
++      if(pid3 == 0){
++        //sleep(1);
++        int i;
++        for(i=0;i<3;i++){
++          write(2,"Going to sleep son 3\n",21);
++          sleep(1);
++          write(2,"woke up son 3\n",15);
++        }
++        write(2,"son 3 exiting\n",15);
++        sleep(1);
++          exit(0);
++      }
++      else {wait(0);wait(0);wait(0);}
++    }
++    else{
++      sleep(2);
++      int i;
++      for(i=0;i<3;i++){
++        write(2,"Going to sleep son 2\n",21);
++        sleep(1);
++        write(2,"woke up son 2\n",15);
++      }
++      write(2,"son 2 exiting\n",15);
++      sleep(1);
++        exit(0);
++    }
++  }
++  else{
++    sleep(3);
++    int i;
++    for(i=0;i<3;i++){
++      write(2,"Going to sleep son 1\n",21);
++      sleep(1);
++      write(2,"woke up son 1\n",15);
++    }
++    write(2,"son 1 exiting\n",15);
++    exit(0);
++  }
++}
++
++void make_test(void (*f)(void) , int expected ,char * fail_msg){
++
++  (*f)();
++  if(ans == expected)
++    success++;
++  else {
++    fail++;
++    printf(2,"%s\n",fail_msg);
++  }
++
++}
++void some(){
++  printf(2,"start some\n" );
++  policy(2);
++}
++int main(void){
++  //round_robin_sanity();
++
++//  some();
++  for (int i=0;i<100;i++){
++  test_3sons(1);
++}
++
++  //make_test(test_exit_wait_success, 1, "test_exit_wait_success failed\n");
++  //make_test(test_exit_wait_fail, -1 , "test_exit_wait_fail failed\n");
++  //make_test(test_detach_success,0,"test_detach_success failed\n");
++  //make_test(test_detach_fail,-1,"test_detach_fail failed\n");
++  //make_test(test_detach_wrong_parent,-1,"test_detach_wrong_parent failed\n");
++  printf(2,"num of success:%d num of failures: %d\n",success,fail );
++
++  exit(0);
++
++}
+diff --git a/trap.c b/trap.c
+index 41c66eb..dbc9f6f 100644
+--- a/trap.c
++++ b/trap.c
+@@ -38,11 +38,11 @@ trap(struct trapframe *tf)
+ {
+   if(tf->trapno == T_SYSCALL){
+     if(myproc()->killed)
+-      exit();
++      exit(0);
+     myproc()->tf = tf;
+     syscall();
+     if(myproc()->killed)
+-      exit();
++      exit(0);
+     return;
+   }
+ 
+@@ -98,7 +98,7 @@ trap(struct trapframe *tf)
+   // (If it is still executing in the kernel, let it keep running
+   // until it gets to the regular system call return.)
+   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
+-    exit();
++    exit(0);
+ 
+   // Force process to give up CPU on clock tick.
+   // If interrupts were on while locks held, would need to check nlock.
+@@ -108,5 +108,5 @@ trap(struct trapframe *tf)
+ 
+   // Check if the process has been killed since we yielded
+   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
+-    exit();
++    exit(0);
+ }
+diff --git a/user.h b/user.h
+index 4f99c52..96b1ca6 100644
+--- a/user.h
++++ b/user.h
+@@ -3,8 +3,8 @@ struct rtcdate;
+ 
+ // system calls
+ int fork(void);
+-int exit(void) __attribute__((noreturn));
+-int wait(void);
++int exit(int) __attribute__((noreturn));
++int wait(int * status);
+ int pipe(int*);
+ int write(int, const void*, int);
+ int read(int, void*, int);
+@@ -23,6 +23,9 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int detach(int pid);
++void policy(int policy);
++void priority(int priority);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/usys.S b/usys.S
+index 8bfd8a1..f6edb3a 100644
+--- a/usys.S
++++ b/usys.S
+@@ -29,3 +29,6 @@ SYSCALL(getpid)
+ SYSCALL(sbrk)
+ SYSCALL(sleep)
+ SYSCALL(uptime)
++SYSCALL(detach)
++SYSCALL(policy)
++SYSCALL(priority)
+diff --git a/wc.c b/wc.c
+index d6a54df..1d4f708 100644
+--- a/wc.c
++++ b/wc.c
+@@ -27,7 +27,7 @@ wc(int fd, char *name)
+   }
+   if(n < 0){
+     printf(1, "wc: read error\n");
+-    exit();
++    exit(0);
+   }
+   printf(1, "%d %d %d %s\n", l, w, c, name);
+ }
+@@ -39,16 +39,16 @@ main(int argc, char *argv[])
+ 
+   if(argc <= 1){
+     wc(0, "");
+-    exit();
++    exit(0);
+   }
+ 
+   for(i = 1; i < argc; i++){
+     if((fd = open(argv[i], 0)) < 0){
+       printf(1, "wc: cannot open %s\n", argv[i]);
+-      exit();
++      exit(0);
+     }
+     wc(fd, argv[i]);
+     close(fd);
+   }
+-  exit();
++  exit(0);
+ }
+diff --git a/zombie.c b/zombie.c
+index ee817da..c96b92d 100644
+--- a/zombie.c
++++ b/zombie.c
+@@ -10,5 +10,5 @@ main(void)
+ {
+   if(fork() > 0)
+     sleep(5);  // Let child exit before parent.
+-  exit();
++  exit(0);
+ }
