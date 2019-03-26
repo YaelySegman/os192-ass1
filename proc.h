@@ -55,8 +55,9 @@ struct proc {
   long long accumulator;         // accumulator of priority
   int priority;                  // process priority
   uint bedTime;                  // process sleeping time
+  uint rtime;                    // process ready time
   uint ctime;                    // process creation time
-  uint ttime;                    // process creation time
+  uint ttime;                    // process termination time
   long long stime;               // the total time the process spent in the SLEEPING state
   uint retime;                   // the total time the process spent in the READY state
   uint rutime;                   // the total time the process spent in the RUNNING state

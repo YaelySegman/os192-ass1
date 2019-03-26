@@ -95,6 +95,10 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 
 void policy(int toPolicy) {
+	cprintf( "The policy changed from: %d to: %d \n",pol , toPolicy);
+	if(toPolicy < 0 || toPolicy > 2){
+		panic("The policy number is not in range...\n");
+	}
 	if(pol == toPolicy){
 		cprintf("Allready in this policy, doing nothing...\n");
 		return;
@@ -185,6 +189,7 @@ void handleSettings(struct proc * p,int isNew){
 
 void signToRRQ(struct proc * p , int isNew){
 if (p->state == RUNNABLE){
+	p->rtime = ticks;
 	handleSettings(p, isNew);
 	updateStarved(p);
 	rrq.enqueue(p);
@@ -194,6 +199,7 @@ if (p->state == RUNNABLE){
 }
 void signToPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
+	p->rtime = ticks;
 	handleSettings(p, isNew);
 	updateStarved(p);
 	pq.put(p);
@@ -202,6 +208,7 @@ void signToPQ(struct proc * p , int isNew){
 }
 void signToExtPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
+		p->rtime = ticks;
 		handleSettings(p, isNew);
 		updateStarved(p);
 		pq.put(p);
@@ -221,28 +228,32 @@ void updateStarved(struct proc * p){
 }
 
 struct proc * getRRQProc(){
-	if(rrq.isEmpty()){
+	/*if(rrq.isEmpty()){
 		panic("getRRQProc failed!!");
-	}
-	return rrq.dequeue();
+	}*/
+	struct proc * p = rrq.dequeue();
+	p->retime += ticks - p->rtime;
+	return p;
 
 
 }
 
 struct proc * getPQProc(){
-	if (pq.isEmpty()){
+	/*if (pq.isEmpty()){
 		panic("getPQProc failed!!");
-	}
-	return pq.extractMin();
+	}*/
+	struct proc * p = pq.extractMin();
+	p->retime += ticks - p->rtime;
+	return p;
 
 
 }
 
 struct proc * getExtPQProc(){
 	struct proc * p = pq.extractMin();
-	if(!p){
+	/*if(!p){
 		panic("getExtPQProc: Queue is empty!");
-	}
+	}*/
 	struct proc * nextProc = p;
 	if(lastProc == p){
 		if(time_quantum_counter % 100 == 0 && !pq.isEmpty()){
@@ -270,6 +281,7 @@ struct proc * getExtPQProc(){
 
 	}
 	lastProc = nextProc;
+	nextProc->retime += ticks - p->rtime;
 	return nextProc;
 }
 
@@ -755,11 +767,11 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-//	int curTick = ticks;
 	p->bedTime = ticks;
+	int beforTick = ticks;
 	sched();
-	//int nextTick = ticks;
-	//p->sleepTime += (nextTick - curTick);
+	int afterTick = ticks;
+	p->stime += (afterTick - beforTick);
 
   // Tidy up.
   p->chan = 0;
