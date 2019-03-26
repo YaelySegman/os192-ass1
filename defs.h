@@ -9,6 +9,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct perf;
 
 // bio.c
 void            binit(void);
@@ -123,6 +124,7 @@ void            yield(void);
 int             detach(int pid);
 void            policy(int policy);
 void            priority(int priority);
+int             wait_stat(int *status, struct perf *performance);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -164,7 +166,7 @@ void            timerinit(void);
 
 // trap.c
 void            idtinit(void);
-extern/*volatile*/uint     ticks;
+extern /*volatile*/ uint     ticks;
 void            tvinit(void);
 extern struct spinlock tickslock;
 

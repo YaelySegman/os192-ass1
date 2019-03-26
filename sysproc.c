@@ -25,16 +25,6 @@ sys_exit(void)
 }
 
 int
-sys_wait(void)
-{
-  int * status;
-  if(argint(0,(int *)(&status))<0)
-    return -1;
-
-  return wait(status);
-}
-
-int
 sys_kill(void)
 {
   int pid;
@@ -54,14 +44,35 @@ sys_detach(void)
 }
 
 int
+sys_wait_stat(void)
+{
+  int * status;
+  struct perf * spref;
+  if(argint(0,(int *)(&status))<0 || argptr(1,(char **) &spref , sizeof(spref))<0)
+    return -1;
+
+  return wait_stat(status, spref);
+}
+int
+sys_wait(void)
+{
+  int * status;
+
+  if(argint(0,(int *)(&status))<0 )
+    return -1;
+
+  return wait(status);
+}
+
+int
 sys_policy(void)
 {
   int poli;
   if(argint(0, &poli)<0){
     return -1;
   }
-  if(poli != 1 && poli != 2 && poli != 3)
-    return -1;
+  // if(poli != 1 && poli != 2 && poli != 3)
+  //   return -1;
   poli--;
   policy(poli);
   return 0;

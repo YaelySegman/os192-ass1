@@ -55,8 +55,8 @@ struct proc {
   long long accumulator;         // accumulator of priority
   int priority;                  // process priority
   uint bedTime;                  // process sleeping time
-  uint rtime;                    // process start to by ready time
-  uint srtime;                   // process start to run time
+  uint readyStartTime;                    // process start to by ready time
+  uint startRunningTime;                   // process start to run time
   uint ctime;                    // process creation time
   uint ttime;                    // process termination time
   long long stime;               // the total time the process spent in the SLEEPING state
@@ -69,3 +69,12 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+//performance struct
+struct perf {
+int ctime;
+int ttime;
+int stime;
+int retime;
+int rutime;
+};

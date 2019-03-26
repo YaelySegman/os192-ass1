@@ -91,7 +91,7 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 
 void policy(int toPolicy) {
-	cprintf( "The policy changed from: %d to: %d \n",pol , toPolicy);
+
 	if(toPolicy < 0 || toPolicy > 2){
 		panic("The policy number is not in range...\n");
 	}
@@ -171,6 +171,7 @@ void switchFromExtPQ (int toPolicy){
 
 void handleSettings(struct proc * p,int isNew){
 	if(!isNew){
+		p->rutime += (ticks - p->startRunningTime);
 		if(pol != ROUND_ROBIN){
 			p->accumulator = p->accumulator + p->priority;
 		}
@@ -185,10 +186,8 @@ void handleSettings(struct proc * p,int isNew){
 
 void signToRRQ(struct proc * p , int isNew){
 if (p->state == RUNNABLE){
-	p->rutime += ticks - p->srtime;
-	p->rtime = ticks;
+	p->readyStartTime = ticks;
 	handleSettings(p, isNew);
-	//updateStarved(p);
 	rrq.enqueue(p);
 }
 	else panic("signToRRQ: proc not Runnable!\n");
@@ -196,20 +195,18 @@ if (p->state == RUNNABLE){
 }
 void signToPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
-	p->rutime += ticks - p->srtime;
-	p->rtime = ticks;
+	p->readyStartTime = ticks;
 	handleSettings(p, isNew);
-	//updateStarved(p);
+
 	pq.put(p);
 }
 	else panic("signToPQ: proc not Runnable!\n");
 }
 void signToExtPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
-		p->rutime += ticks - p->srtime;
-		p->rtime = ticks;
+		p->readyStartTime = ticks;
 		handleSettings(p, isNew);
-		//updateStarved(p);
+
 		pq.put(p);
 }
 	else panic("signToExtPQ: proc not Runnable!\n");
@@ -217,9 +214,9 @@ void signToExtPQ(struct proc * p , int isNew){
 
 
 struct proc * getRRQProc(){
-	/*if(rrq.isEmpty()){
+	if(rrq.isEmpty()){
 		panic("getRRQProc failed!!");
-	}*/
+	}
 	struct proc * p = rrq.dequeue();
 	return p;
 
@@ -227,9 +224,9 @@ struct proc * getRRQProc(){
 }
 
 struct proc * getPQProc(){
-	/*if (pq.isEmpty()){
+	if (pq.isEmpty()){
 		panic("getPQProc failed!!");
-	}*/
+	}
 	struct proc * p = pq.extractMin();
 	return p;
 
@@ -370,7 +367,16 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+	p->bedTime = time_quantum_counter;
+	p->readyStartTime = 0;
+	p->startRunningTime = 0;
 	p->ctime = ticks;
+	//p->ttime = 0;
+	p->stime = 0;
+	p->rutime = 0;
+	p->retime = 0;
+
+
   return p;
 }
 
@@ -408,7 +414,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-	p->bedTime = time_quantum_counter;
+
 	signToQ(p, NEW_PROCESS);
   release(&ptable.lock);
 }
@@ -475,7 +481,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-	np->bedTime = time_quantum_counter;
+
 	signToQ(np,NEW_PROCESS);
 
   release(&ptable.lock);
@@ -508,10 +514,12 @@ exit(int status)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-
+	curproc->ttime = ticks;
+	curproc->rutime += (ticks - curproc->startRunningTime);
   acquire(&ptable.lock);
 	curproc->exit_status = status;
-	curproc ->ttime = ticks;
+
+
   // Parent might be sleeping in wait(0).
   wakeup1(curproc->parent);
 
@@ -610,6 +618,18 @@ void priority(int priority){
 
 }
 
+int wait_stat(int *status, struct perf *performance) {
+	struct proc *curproc = myproc();
+	int pid = wait(status);
+	performance->ctime = curproc->ctime;
+	performance->ttime = curproc->ttime;
+	performance->stime = curproc->stime;
+	performance->retime = curproc->retime;
+	performance->rutime = curproc->rutime;
+	return pid;
+
+}
+
 void updateMinAccumulator(struct proc* p){
 
 	long long acc_pq, acc_rq;
@@ -657,9 +677,9 @@ scheduler(void){
       // before jumping back to us.
       c->proc = p;
       switchuvm(p);
-			p->retime += ticks - p->rtime;
+			p->retime += ticks - p->readyStartTime;
       p->state = RUNNING;
-			p->srtime = ticks;
+			p->startRunningTime = ticks;
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
 			rpholder.remove(p);
@@ -759,7 +779,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-	p->rutime += ticks - p->srtime;
+	p->rutime += (ticks - p->startRunningTime);
 	p->bedTime = ticks;
 	int beforTick = ticks;
 	sched();
