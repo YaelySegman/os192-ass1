@@ -222,7 +222,9 @@ boolean test_starvation_helper(int npolicy, int npriority) {
         } else if (pid == 0) {
             sleep(5);
             priority(npriority);
-            for (;;);
+            for (;;){
+            //  printf(1,"inside infinite loop\n" );
+            }
         } else {
             pid_arr[i] = pid;
         }
@@ -285,7 +287,7 @@ printf(1,"something\n");
     run_test(test_priority_policy, "priority policy");
     run_test(test_extended_priority_policy, "extended priority policy");
     run_test(test_accumulator, "accumulator");
-   run_test(&test_starvation, "starvation");
+   run_test(test_starvation, "starvation");
 //  run_test(&test_performance_round_robin, "performance round robin");
   //  run_test(&test_performance_priority, "performance priority");
   //  run_test(&test_performance_extended_priority, "performance extended priority");

@@ -20,7 +20,7 @@ enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
 volatile int pol = ROUND_ROBIN;
 int min_priority = 1;
 int max_priority = 10;
-int time_quantum_counter = 0;
+int time_quantum_counter = 1;
 long long MAX_LONG  = 9223372036854775807;
 struct proc * forgottenProc;
 struct proc *newestProc;
@@ -176,6 +176,7 @@ void handleSettings(struct proc * p,int isNew){
 		}
 	}
 	else{
+		//newestProc = p;
 		if(pol != ROUND_ROBIN){
 			updateMinAccumulator(p);
 		}
@@ -209,15 +210,11 @@ void signToExtPQ(struct proc * p , int isNew){
 }
 
 void updateStarved(struct proc * p){
-	newestProc = p;
-	if(!forgottenProc){
+
+	if(forgottenProc == null || forgottenProc->state != RUNNABLE || forgottenProc->bedTime > p->bedTime){
 		forgottenProc = p;
 	}
-	else{
-		if(forgottenProc->bedTime >= p->bedTime){
-				forgottenProc = p;
-		}
-	}
+
 }
 
 struct proc * getRRQProc(){
@@ -240,7 +237,10 @@ struct proc * getPQProc(){
 
 struct proc * getExtPQProc(){
 	struct proc * p = pq.extractMin();
-	struct proc * nextProc;
+	if(!p){
+		panic("getExtPQProc: Queue is empty!");
+	}
+	struct proc * nextProc = p;
 	if(lastProc == p){
 		if(time_quantum_counter % 100 == 0 && !pq.isEmpty()){
 				if(forgottenProc->state == RUNNABLE){
@@ -252,16 +252,8 @@ struct proc * getExtPQProc(){
 					forgottenProc->bedTime = MAX_LONG;
 					nextProc = forgottenProc;
 				}
-				else if(newestProc->state == RUNNABLE){
-					pq.put(p);
-					if(!pq.extractProc(newestProc)){
-						panic("getExtPQProc : extractProc failed ,newestProc proc is not in queue");
-					}
-					time_quantum_counter = 1;
-					newestProc->bedTime = MAX_LONG;
-					nextProc = newestProc;
-				}
-				else panic("getExtPQProc: newestProc is not runnable");
+
+				else panic("getExtPQProc: forgotten proc is not runnable");
 
 		}
 		else{
@@ -270,9 +262,11 @@ struct proc * getExtPQProc(){
 		}
 	}
 	else{
-		time_quantum_counter = 0;
+		time_quantum_counter = 1;
 		nextProc =  p;
+
 	}
+	lastProc = nextProc;
 	return nextProc;
 }
 
@@ -370,7 +364,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
-
+	p->ctime = ticks;
   return p;
 }
 
@@ -512,6 +506,7 @@ exit(int status)
 
   acquire(&ptable.lock);
 	curproc->exit_status = status;
+	curproc ->ttime = ticks;
   // Parent might be sleeping in wait(0).
   wakeup1(curproc->parent);
 
