@@ -214,6 +214,9 @@ void updateStarved(struct proc * p){
 	if(forgottenProc == null || forgottenProc->state != RUNNABLE || forgottenProc->bedTime > p->bedTime){
 		forgottenProc = p;
 	}
+	if(!newestProc|| newestProc->state!=RUNNABLE){
+		newestProc = p;
+	}
 
 }
 
