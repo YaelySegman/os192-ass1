@@ -22,14 +22,13 @@ int min_priority = 1;
 int max_priority = 10;
 volatile uint time_quantum_counter = 1;
 long long MAX_LONG  = 9223372036854775807;
-struct proc * forgottenProc;
-struct proc *newestProc;
+
 
 #define DEFAULT_PRIORITY 5
 #define NEW_PROCESS 1 	//true
 #define OLD_PROCESS 0		//false
 
-
+static void getTicks(uint * currtick);
 static void (*volatile switchFromPolicy)(int toPolicy);
 static void (*volatile signToQ)(struct proc * p , int isNew);
 static struct proc * (*volatile getProc)(void);
@@ -170,8 +169,11 @@ void switchFromExtPQ (int toPolicy){
 
 
 void handleSettings(struct proc * p,int isNew){
+	uint currtick;
+	getTicks(&currtick);
+	p->readyStartTime = currtick;
 	if(!isNew){
-		p->rutime += (ticks - p->startRunningTime);
+		p->rutime += (currtick - p->startRunningTime);
 		if(pol != ROUND_ROBIN){
 			p->accumulator = p->accumulator + p->priority;
 		}
@@ -186,7 +188,6 @@ void handleSettings(struct proc * p,int isNew){
 
 void signToRRQ(struct proc * p , int isNew){
 if (p->state == RUNNABLE){
-	p->readyStartTime = ticks;
 	handleSettings(p, isNew);
 	rrq.enqueue(p);
 }
@@ -195,7 +196,6 @@ if (p->state == RUNNABLE){
 }
 void signToPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
-	p->readyStartTime = ticks;
 	handleSettings(p, isNew);
 
 	pq.put(p);
@@ -204,7 +204,7 @@ void signToPQ(struct proc * p , int isNew){
 }
 void signToExtPQ(struct proc * p , int isNew){
 	if (p->state == RUNNABLE){
-		p->readyStartTime = ticks;
+
 		handleSettings(p, isNew);
 
 		pq.put(p);
@@ -366,12 +366,13 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+	uint currtick;
+	getTicks(&currtick);
 	p->bedTime = time_quantum_counter;
 	p->readyStartTime = 0;
 	p->startRunningTime = 0;
-	p->ctime = ticks;
-	//p->ttime = 0;
+	p->ctime = currtick;
+	p->ttime = 0;
 	p->stime = 0;
 	p->rutime = 0;
 	p->retime = 0;
@@ -514,8 +515,7 @@ exit(int status)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-	curproc->ttime = ticks;
-	curproc->rutime += (ticks - curproc->startRunningTime);
+
   acquire(&ptable.lock);
 	curproc->exit_status = status;
 
@@ -531,7 +531,10 @@ exit(int status)
         wakeup1(initproc);
     }
   }
-
+	uint curtick;
+	getTicks(&curtick);
+	curproc->ttime = curtick;
+	curproc->rutime += (curtick - curproc->startRunningTime);
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
 	sched();
@@ -567,6 +570,7 @@ wait(int * status)
         p->killed = 0;
         p->state = UNUSED;
 				p->bedTime = MAX_LONG;
+
 				// discard the status if it's null
 				if(status != null){
 					*status = p->exit_status;
@@ -619,16 +623,66 @@ void priority(int priority){
 }
 
 int wait_stat(int *status, struct perf *performance) {
+	struct proc *p;
+	int havekids, pid;
 	struct proc *curproc = myproc();
-	int pid = wait(status);
-	performance->ctime = curproc->ctime;
-	performance->ttime = curproc->ttime;
-	performance->stime = curproc->stime;
-	performance->retime = curproc->retime;
-	performance->rutime = curproc->rutime;
-	return pid;
 
+	acquire(&ptable.lock);
+	for(;;){
+		// Scan through table looking for exited children.
+		havekids = 0;
+		for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+			if(p->parent != curproc)
+				continue;
+			havekids = 1;
+			if(p->state == ZOMBIE){
+				performance->ctime = p->ctime;
+				performance->ttime = p->ttime;
+				performance->stime = p->stime;
+				performance->retime = p->retime;
+				performance->rutime = p->rutime;
+				// Found one.
+				pid = p->pid;
+				kfree(p->kstack);
+				p->kstack = 0;
+				freevm(p->pgdir);
+				p->pid = 0;
+				p->parent = 0;
+				p->name[0] = 0;
+				p->killed = 0;
+				p->state = UNUSED;
+				p->bedTime = MAX_LONG;
+				p->rutime = 0;
+				p->retime = 0;
+				p->stime = 0;
+				p->ttime = 0;
+				p->ctime = 0;
+
+				// discard the status if it's null
+				if(status != null){
+					*status = p->exit_status;
+				}
+				release(&ptable.lock);
+				return pid;
+			}
+		}
+
+		// No point waiting if we don't have any children.
+		if(!havekids || curproc->killed){
+			release(&ptable.lock);
+			return -1;
+		}
+
+		// Wait for children to exit.  (See wakeup1 call in proc_exit.)
+
+		sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+
+	}
 }
+
+
+
+
 
 void updateMinAccumulator(struct proc* p){
 
@@ -662,6 +716,7 @@ scheduler(void){
   struct proc *p=0;
   struct cpu *c = mycpu();
   c->proc = 0;
+	uint curtick;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -677,9 +732,10 @@ scheduler(void){
       // before jumping back to us.
       c->proc = p;
       switchuvm(p);
-			p->retime += ticks - p->readyStartTime;
+			getTicks(&curtick);
+			p->retime += curtick - p->readyStartTime;
       p->state = RUNNING;
-			p->startRunningTime = ticks;
+			p->startRunningTime = curtick;
 			rpholder.add(p);
       swtch(&(c->scheduler), p->context);
 			rpholder.remove(p);
@@ -752,7 +808,12 @@ forkret(void)
 
   // Return to "caller", actually trapret (see allocproc).
 }
+void getTicks(uint * currtick){
+	  //acquire(&tickslock);
+		*currtick = ticks;
+		//release(&tickslock);
 
+}
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
 void
@@ -779,11 +840,14 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-	p->rutime += (ticks - p->startRunningTime);
-	p->bedTime = ticks;
-	int beforTick = ticks;
+	uint currtick;
+	getTicks(&currtick);
+	p->rutime += (currtick - p->startRunningTime);
+	p->bedTime = currtick;
+	int beforTick = currtick;
 	sched();
-	int afterTick = ticks;
+	getTicks(&currtick);
+	int afterTick = currtick;
 	p->stime += (afterTick - beforTick);
 
   // Tidy up.
