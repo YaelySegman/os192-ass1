@@ -1,0 +1,7 @@
+$ Calling priority system call with correct args
+Calling priority system call with correct args
+Calling priority system call with correct args
+Calling priority system call with correct args
+Calling priority system call with correct args
+lapicid 1: panic: Priorety is not in allowed range
+ 801042a7 80106ce8 80105f4e 80107119 80106e52 0 0 0 0 0

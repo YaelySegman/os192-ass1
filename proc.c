@@ -18,7 +18,7 @@ long long getAccumulator(struct proc *p) {
 
 enum policy { ROUND_ROBIN, PRIORITY, E_PRIORITY };
 volatile int pol = ROUND_ROBIN;
-int min_priority = 1;
+int min_priority = 0;
 int max_priority = 10;
 volatile uint time_quantum_counter = 1;
 long long MAX_LONG  = 9223372036854775807;
@@ -92,7 +92,9 @@ static void wakeup1(void *chan);
 void policy(int toPolicy) {
 
 	if(toPolicy < 0 || toPolicy > 2){
-		panic("The policy number is not in range...\n");
+		//panic("The policy number is not in range...\n");
+		cprintf("The policy number is not in range...\n");
+		return;
 	}
 	if(pol == toPolicy){
 		cprintf("Allready in this policy, doing nothing...\n");
@@ -608,7 +610,7 @@ int detach(int pid){
 
 	}
 	release(&ptable.lock);
-	cprintf("Detach failed, no child proccess with pid %d \n", pid);
+	//cprintf("Detach failed, no child proccess with pid %d \n", pid);
 	return -1;
 }
 void priority(int priority){
@@ -618,7 +620,7 @@ void priority(int priority){
 	 	myproc()->priority = priority;
 		release(&ptable.lock);
  	}
- 	else panic("Priorety is not in allowed range");
+ 	//else panic("Priorety is not in allowed range");
 
 }
 
