@@ -85,7 +85,7 @@ runcmd(struct cmd *cmd)
     exit(0);
     //Try to exec original command
     exec(ecmd->argv[0], ecmd->argv);
-    printf(2,"returned from exec\n" );
+    //printf(2,"returned from exec\n" );
     //Returned from exec -> Couldn't find cmd in current dir -> try to find with path file
     fd = open("/path",O_RDONLY);
     myCmd = ecmd->argv[0];
@@ -104,7 +104,6 @@ runcmd(struct cmd *cmd)
           s[stringLocation] = 0;
           stringLocation = 0;
           cmdName = 0;
-          // DEBUG, DELETE LATER:printf(2,"cmd is:%s\n",s);
           exec(s, ecmd->argv);
 
           }
@@ -183,8 +182,6 @@ getcmd(char *buf, int nbuf)
 int
 main(void)
 {
-//TODO:delete LATER
-
 
   static char buf[100];
   int fd;
@@ -202,6 +199,7 @@ main(void)
   //check if path file exists ' create it if not.'
   int init_path_size=2;
   char *  init_path= "/:";
+  
   if(open("path",O_RDONLY ) < 0 ){
     if((fdpath = open("path", O_CREATE| O_RDWR ))>=0 ){
       if(write(fdpath,init_path,init_path_size)!=init_path_size){
@@ -215,7 +213,7 @@ main(void)
 
   }
   else{
-    printf(2,"file path exists\n", 18);
+   // printf(2,"file path exists\n", 18);
   }
 
 

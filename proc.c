@@ -93,11 +93,11 @@ void policy(int toPolicy) {
 
 	if(toPolicy < 0 || toPolicy > 2){
 		//panic("The policy number is not in range...\n");
-		cprintf("The policy number is not in range...\n");
+	//	cprintf("The policy number is not in range...\n");
 		return;
 	}
 	if(pol == toPolicy){
-		cprintf("Allready in this policy, doing nothing...\n");
+		//cprintf("Allready in this policy, doing nothing...\n");
 		return;
 	}
 	acquire(&ptable.lock);
@@ -181,7 +181,6 @@ void handleSettings(struct proc * p,int isNew){
 		}
 	}
 	else{
-		//newestProc = p;
 		if(pol != ROUND_ROBIN){
 			updateMinAccumulator(p);
 		}
@@ -604,7 +603,7 @@ int detach(int pid){
 		if (pid!= p->pid || curproc!= p->parent)
 			continue;
 
-		p->parent = 0;
+		p->parent = initproc;
 		release(&ptable.lock);
 		return 0;
 
